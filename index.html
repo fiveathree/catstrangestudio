@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>宇宙玻璃 Studio 3D</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&display=swap">
+<style>
+*{box-sizing:border-box}body{margin:0;font-size:14px}[hidden]{display:none!important}
+/* Layout: full-screen 3D stage; controls float over it — style tabs on top, views bottom-left, notes bottom-right. Single dark look by choice. */
+:root{
+  color-scheme:dark;
+  --ink:#0A0C12; --panel:rgba(14,17,26,.82); --line:#39425C; --fg:#ECEEF5; --dim:#A9B1C8;
+  --pick:#FF9A4D; --pick-ink:#1A1206; --focus:#7FD6FF;
+  --sans:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;
+  --serif:'Noto Serif TC','Songti TC','PMingLiU',serif;
+}
+html,body{height:100%}
+body{background:var(--ink);color:var(--fg);font-family:var(--sans);overflow:hidden}
+#stage{position:relative;width:100%;height:100%}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lb{position:absolute;transform:translate(-50%,-100%);padding:2px 7px;border-radius:3px;background:rgba(10,12,18,.78);color:var(--fg);font-size:12px;white-space:nowrap;border:1px solid var(--line)}
+.lb.hot{background:var(--pick);color:var(--pick-ink);border-color:var(--pick);font-weight:700}
+.bar{position:absolute;left:0;right:0;display:flex;flex-wrap:wrap;gap:10px;padding-inline:16px;pointer-events:none}
+.bar>*{pointer-events:auto}
+#top{top:0;padding-block:14px 0;align-items:center;justify-content:space-between}
+#bottom{bottom:0;padding-block:0 14px;align-items:flex-end;justify-content:space-between}
+h1{margin:0;font-family:var(--serif);font-size:20px;font-weight:700;letter-spacing:.04em;text-shadow:0 1px 6px #000}
+.grp{display:flex;flex-wrap:wrap;gap:6px;padding:6px;background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(8px)}
+button{font:inherit;font-size:14px;color:var(--fg);background:transparent;border:1px solid transparent;border-radius:6px;padding:9px 13px;min-height:40px;cursor:pointer}
+button:hover{border-color:var(--line)}
+button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-weight:700}
+#note{max-width:380px;min-width:0;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:6px}
+#note h2{margin:0;font-family:var(--serif);font-size:22px}
+#note p{margin:0;font-size:13.5px;line-height:1.7;color:var(--dim)}
+#note p b{color:var(--fg);font-weight:500}
+#hint{font-size:12px;color:var(--dim);text-shadow:0 1px 4px #000}
+#err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;line-height:1.8}
+@media (max-width:640px){
+  h1{font-size:16px;width:100%}
+  button{padding:8px 10px;font-size:13px}
+  #note{max-width:none;width:100%;padding:10px 12px}
+  #note h2{font-size:18px}
+  #note p{font-size:12.5px;line-height:1.55}
+  .lb{font-size:10.5px;padding:1px 5px}
+}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="gl" aria-label="Studio 立體模型，可拖動旋轉"></canvas>
+  <div id="labels"></div>
+  <div class="bar" id="top">
+    <h1>宇宙玻璃 Studio・3D</h1>
+    <div class="grp" role="group" aria-label="風格">
+      <button id="s-A" data-s="A" aria-pressed="true">A 暗宇宙</button>
+      <button id="s-B" data-s="B" aria-pressed="false">B 實驗室</button>
+      <button id="s-C" data-s="C" aria-pressed="false">C 侘寂茶室</button>
+      <button id="s-D" data-s="D" aria-pressed="false">D 工業工坊</button>
+    </div>
+  </div>
+  <div class="bar" id="bottom">
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+      <div id="hint">拖動旋轉・滾輪或雙指縮放・右鍵或雙指平移</div>
+      <div class="grp" role="group" aria-label="視角">
+        <button id="v-bird" data-v="bird" aria-pressed="true">鳥瞰</button>
+        <button id="v-door" data-v="door" aria-pressed="false">入口</button>
+        <button id="v-talk" data-v="talk" aria-pressed="false">洽談區</button>
+        <button id="v-work" data-v="work" aria-pressed="false">工作區</button>
+        <button id="v-top" data-v="top" aria-pressed="false">平面</button>
+        <button id="t-lab" aria-pressed="true">標籤</button>
+      </div>
+    </div>
+    <div id="note"><h2 id="n-t"></h2><p id="n-d"></p><p id="n-m"></p></div>
+  </div>
+  <div id="err" hidden>3D 元件載入唔到。請重新整理頁面，或者換一個瀏覽器再開。</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+if(!window.THREE||!THREE.OrbitControls){document.getElementById('err').hidden=false;return;}
+
+var L=11.9,W=3.85,H=2.8,BAL=1.8;   // 室內長、闊、淨高(假設)、陽台深，單位 m
+
+var THEMES={
+A:{t:'暗宇宙 Observatory',d:'全黑展廳，每件作品一盞窄角射燈，玻璃內的星雲自己發光。',m:'<b>物料</b> 消光黑塗料、黑色微水泥、黑鐵展台　<b>燈光</b> 10–15° 射燈 4000 K',
+  bg:0x05060A,floor:0x15171D,wall:0x12141B,ceil:0x0C0D12,furn:0x1E2330,base:0x161922,top:0x2A3040,metal:0x8B93A6,frame:0x2A2F3D,
+  marbles:[0x8B7CFF,0x4FC3FF,0xFF7AD9,0x5CFFD0],hemi:0.3,sun:0.18,exp:1.15,spot:1.6,spotCol:0xFFF1DC,fill:0,fillCol:0xffffff},
+B:{t:'實驗室 Lab',d:'白色、不鏽鋼、玻璃。工作區做成一個看得見的玻璃實驗室，配合實驗室鑽石的定位。',m:'<b>物料</b> 白色環氧地坪、不鏽鋼、白色人造石　<b>燈光</b> 5000 K 線型燈，均勻無影',
+  bg:0xDCE3E8,floor:0xE6E9EC,wall:0xF5F6F7,ceil:0xFFFFFF,furn:0xFFFFFF,base:0xF2F4F5,top:0xC9D1D6,metal:0xB8C1C8,frame:0x9AA5AD,
+  marbles:[0x1E6FFF,0x00B3C7,0x7A5CFF,0x2ED3A0],hemi:0.85,sun:0.55,exp:1.0,spot:0.35,spotCol:0xFFFFFF,fill:0.5,fillCol:0xF4FAFF},
+C:{t:'侘寂茶室 Wabi',d:'以一張長木桌為中心，慢慢談訂製。灰泥牆、暖木、低色溫，適合紀念作品的氣氛。',m:'<b>物料</b> 手抹灰泥、橡木、亞麻布、洗石子　<b>燈光</b> 2700 K 間接光＋壁龕小射燈',
+  bg:0x2B2520,floor:0x9A8B78,wall:0xD9CFBF,ceil:0xE4DCCF,furn:0xB08D62,base:0xA27F55,top:0xC29E72,metal:0x4A4039,frame:0x5A4A3A,
+  marbles:[0x2F6FB0,0x7C5AC2,0x2E9C8F,0xC98A3A],hemi:0.5,sun:0.38,exp:1.0,spot:0.7,spotCol:0xFFD9A8,fill:0.45,fillCol:0xFFC98A},
+D:{t:'工業工坊 Atelier',d:'不設隔間，火焰就是主角。客人坐在吧台，隔一道玻璃護屏看你燒玻璃。',m:'<b>物料</b> 清水混凝土、黑鐵角鋼、耐火磚、鋼網　<b>燈光</b> 軌道燈＋工業吊燈 3500 K',
+  bg:0x17181A,floor:0x6F716F,wall:0x8D8F8C,ceil:0x3A3B3C,furn:0x26282A,base:0x1E1F20,top:0x7A5A3C,metal:0x2B2D2F,frame:0x1E1F20,
+  marbles:[0xFF8A3D,0x4FC3FF,0x9B7CFF,0x5CFFD0],hemi:0.42,sun:0.4,exp:1.05,spot:0.9,spotCol:0xFFE2B8,fill:0.3,fillCol:0xFFB070}
+};
+
+/* 傢俬：x,z 為左上角(m)，w 沿長邊，d 沿闊邊 */
+var WORK=[
+  {k:'torch',x:8.6,z:0,w:1.5,d:0.7,l:'排氣罩＋燒製工作枱',hot:1},
+  {k:'kiln',x:11.05,z:0.2,l:'高溫爐',hot:1},
+  {k:'rack',x:8.6,z:3.45,w:1.1,d:0.4,l:'玻璃棒料架'},
+  {k:'counter',x:10.1,z:3.25,w:1.3,d:0.6,l:'冷加工・打磨'},
+  {k:'ext',x:8.15,z:3.3}
+];
+function stools(list){return list.map(function(p){return {k:'stool',x:p[0],z:p[1]};});}
+var PLANS={
+A:[
+  {k:'case',x:0.4,z:0,w:2.2,d:0.4,l:'壁面展櫃'},
+  {k:'case',x:3.3,z:3.45,w:2.1,d:0.4,l:'壁面展櫃'},
+  {k:'ped',x:1.48,z:1.68},{k:'ped',x:2.23,z:1.30},{k:'ped',x:3.03,z:1.78,l:'軌道展台 ×5'},{k:'ped',x:3.83,z:1.38},{k:'ped',x:4.58,z:1.90},
+  {k:'sink',x:5.75,z:0,w:2.08,d:0.6,l:'水槽・包裝・茶水'},
+  {k:'table',x:6.0,z:1.9,w:1.4,d:0.8,l:'訂製洽談桌'},
+  {k:'glass',x:7.9,z0:0.13,z1:1.5},{k:'glass',x:7.9,z0:2.5,z1:3.72,l:'防火玻璃隔間'}
+].concat(stools([[5.77,2.11],[5.77,2.51],[7.63,2.11],[7.63,2.51]]),WORK),
+B:[
+  {k:'counter',x:0.5,z:0.3,w:1.4,d:0.6,l:'接待櫃檯'},
+  {k:'case',x:3.3,z:0,w:2.1,d:0.4,l:'壁面展櫃'},
+  {k:'case',x:1.3,z:3.45,w:4.0,d:0.4,l:'4 m 長展櫃'},
+  {k:'table',x:2.7,z:1.5,w:1.6,d:0.8,l:'洽談・展示桌'},
+  {k:'glass',x:5.6,z0:0,z1:1.4,l:'玻璃實驗室'},{k:'glass',x:5.6,z0:2.4,z1:3.85},
+  {k:'sink',x:5.75,z:0,w:2.08,d:0.6,l:'水槽・冷加工'},
+  {k:'torch',x:8.7,z:0,w:1.5,d:0.7,l:'燒製工作枱 1',hot:1},
+  {k:'torch',x:8.7,z:3.15,w:1.5,d:0.7,l:'燒製工作枱 2',hot:1},
+  {k:'kiln',x:11.05,z:0.25,l:'高溫爐',hot:1},
+  {k:'table',x:6.4,z:1.65,w:1.6,d:0.7,l:'品檢・包裝桌',steel:1},
+  {k:'rack',x:6.0,z:3.45,w:1.7,d:0.4,l:'玻璃棒料櫃'},
+  {k:'ext',x:5.85,z:3.2}
+].concat(stools([[3.07,1.29],[3.93,1.29],[3.07,2.51],[3.93,2.51]])),
+C:[
+  {k:'ped',x:1.62,z:1.32,big:1,l:'主角展台'},
+  {k:'screen',x:2.36,z0:0.13,z1:2.03,l:'木格柵屏風'},
+  {k:'case',x:3.3,z:0,w:2.3,d:0.36,l:'壁龕展示'},
+  {k:'table',x:3.7,z:1.5,w:2.4,d:0.9,l:'長木桌（訂製洽談）'},
+  {k:'bench',x:3.0,z:3.4,w:2.6,d:0.45,l:'臥榻・矮櫃'},
+  {k:'sink',x:6.0,z:0,w:1.83,d:0.6,l:'茶水台'},
+  {k:'glass',x:7.9,z0:0.13,z1:1.5},{k:'glass',x:7.9,z0:2.5,z1:3.72,l:'防火玻璃隔間'}
+].concat(stools([[4.02,1.29],[4.9,1.29],[5.77,1.29],[4.02,2.61],[4.9,2.61],[5.77,2.61]]),WORK),
+D:[
+  {k:'shelf',x:0.4,z:0,w:2.2,d:0.45,l:'角鋼展示架'},
+  {k:'shelf',x:1.3,z:3.4,w:3.2,d:0.45,l:'角鋼展示架'},
+  {k:'cart',x:2.3,z:1.6,w:1.2,d:0.6,l:'展示推車'},
+  {k:'table',x:4.2,z:1.5,w:1.6,d:0.8,l:'洽談・包裝桌'},
+  {k:'sink',x:5.75,z:0,w:2.08,d:0.6,l:'水槽・冷加工'},
+  {k:'counter',x:6.0,z:3.25,w:1.4,d:0.6,l:'收銀櫃檯'},
+  {k:'bar',x:8.0,z:1.0,w:0.45,d:1.7,l:'觀賞吧台'},
+  {k:'glass',x:8.54,z0:0.9,z1:2.8,h:1.6,l:'玻璃護屏'},
+  {k:'torch',x:8.7,z:1.1,w:0.7,d:1.5,l:'排氣罩＋燒製工作枱',hot:1},
+  {k:'kiln',x:11.05,z:0.25,l:'高溫爐',hot:1},
+  {k:'rack',x:9.0,z:3.45,w:1.6,d:0.4,l:'玻璃棒料架'},
+  {k:'ext',x:8.2,z:3.4}
+].concat(stools([[4.57,1.27],[5.43,1.27],[4.57,2.53],[5.43,2.53],[7.77,1.29],[7.77,1.85],[7.77,2.41]]))
+};
+
+var canvas=document.getElementById('gl'),stage=document.getElementById('stage'),labelBox=document.getElementById('labels');
+var renderer;
+try{renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});}
+catch(e){document.getElementById('err').hidden=false;return;}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;
+
+var scene=new THREE.Scene();
+var camera=new THREE.PerspectiveCamera(45,1,0.05,100);
+var controls=new THREE.OrbitControls(camera,canvas);
+controls.enableDamping=true;controls.dampingFactor=0.08;controls.maxPolarAngle=Math.PI/2-0.02;controls.minDistance=0.4;controls.maxDistance=40;
+
+var world=null,labels=[],T=null,showLabels=true,cur='A';
+
+function mat(color,o){var p={color:color,roughness:0.75,metalness:0};if(o)for(var k in o)p[k]=o[k];return new THREE.MeshStandardMaterial(p);}
+function box(w,h,d,m,x,y,z,noShadow){var me=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);me.position.set(x+w/2,y+h/2,z+d/2);if(!noShadow){me.castShadow=true;me.receiveShadow=true;}world.add(me);return me;}
+function cyl(r,h,m,cx,y,cz,seg){var me=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg||24),m);me.position.set(cx,y+h/2,cz);me.castShadow=true;me.receiveShadow=true;world.add(me);return me;}
+function plane(w,h,m,px,py,pz,rx,ry){var me=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);me.position.set(px,py,pz);me.rotation.set(rx||0,ry||0,0);me.receiveShadow=true;world.add(me);return me;}
+function label(text,x,y,z,hot){if(!text)return;var el=document.createElement('div');el.className='lb'+(hot?' hot':'');el.textContent=text;labelBox.appendChild(el);labels.push({el:el,p:new THREE.Vector3(x,y,z)});}
+var mi=0;
+function marble(cx,y,cz,r){var c=T.marbles[(mi++)%T.marbles.length];var me=new THREE.Mesh(new THREE.SphereGeometry(r||0.055,20,14),mat(c,{emissive:c,emissiveIntensity:0.75,roughness:0.15}));me.position.set(cx,y+(r||0.055),cz);world.add(me);return me;}
+function spot(cx,cz,ty){if(T.spot<=0)return;var s=new THREE.SpotLight(T.spotCol,T.spot,4.5,0.34,0.6,1.2);s.position.set(cx,H-0.08,cz);s.target.position.set(cx,ty||1,cz);world.add(s);world.add(s.target);cyl(0.04,0.12,mat(T.frame),cx,H-0.14,cz,12);}
+function legs(x,z,w,d,h,m){var t=0.05;[[x,z],[x+w-t,z],[x,z+d-t],[x+w-t,z+d-t]].forEach(function(p){box(t,h,t,m,p[0],0,p[1]);});}
+
+var BUILD={
+case:function(i){
+  box(i.w,0.9,i.d,mat(T.base),i.x,0,i.z);
+  box(i.w,1.0,i.d,mat(0xffffff,{transparent:true,opacity:0.14,roughness:0.05,depthWrite:false}),i.x,0.9,i.z,true);
+  box(i.w,0.06,i.d,mat(T.frame),i.x,1.9,i.z);
+  var n=Math.max(2,Math.round(i.w/0.42));for(var a=0;a<n;a++)marble(i.x+(a+0.5)*i.w/n,0.9,i.z+i.d/2);
+  spot(i.x+i.w*0.3,i.z+i.d/2,0.9);spot(i.x+i.w*0.7,i.z+i.d/2,0.9);
+  return 2.05;},
+shelf:function(i){
+  var m=mat(T.frame,{metalness:0.6,roughness:0.5});
+  [[i.x,i.z],[i.x+i.w-0.04,i.z],[i.x,i.z+i.d-0.04],[i.x+i.w-0.04,i.z+i.d-0.04]].forEach(function(p){box(0.04,2.0,0.04,m,p[0],0,p[1]);});
+  [0.5,1.0,1.5].forEach(function(y){box(i.w,0.03,i.d,mat(T.top),i.x,y,i.z);var n=Math.round(i.w/0.5);for(var a=0;a<n;a++)marble(i.x+(a+0.5)*i.w/n,y+0.03,i.z+i.d/2);});
+  spot(i.x+i.w/2,i.z+i.d/2+(i.z<1?0.5:-0.5),1.2);
+  return 2.1;},
+ped:function(i){
+  var r=i.big?0.24:0.17;cyl(r,1.05,mat(T.base),i.x,0,i.z);marble(i.x,1.05,i.z,i.big?0.1:0.06);spot(i.x,i.z,1.05);
+  return 1.35;},
+table:function(i){
+  var m=i.steel?mat(T.metal,{metalness:0.7,roughness:0.35}):mat(T.top);
+  box(i.w,0.05,i.d,m,i.x,0.72,i.z);legs(i.x+0.05,i.z+0.05,i.w-0.1,i.d-0.1,0.72,mat(T.frame));
+  marble(i.x+i.w*0.35,0.77,i.z+i.d/2,0.045);marble(i.x+i.w*0.6,0.77,i.z+i.d*0.4,0.045);
+  return 0.95;},
+stool:function(i){cyl(0.17,0.05,mat(T.top),i.x,0.42,i.z);cyl(0.03,0.42,mat(T.frame),i.x,0,i.z,10);return 0;},
+counter:function(i){box(i.w,0.86,i.d,mat(T.furn),i.x,0,i.z);box(i.w,0.04,i.d,mat(T.top),i.x,0.86,i.z);return 1.1;},
+sink:function(i){
+  box(i.w,0.86,i.d,mat(T.furn),i.x,0,i.z);box(i.w,0.04,i.d,mat(T.metal,{metalness:0.7,roughness:0.3}),i.x,0.86,i.z);
+  box(0.5,0.012,0.36,mat(0x0E0F12),i.x+0.25,0.9,i.z+0.12,true);cyl(0.015,0.25,mat(T.metal,{metalness:0.9,roughness:0.2}),i.x+0.5,0.9,i.z+0.08,10);
+  return 1.25;},
+bench:function(i){box(i.w,0.4,i.d,mat(T.furn),i.x,0,i.z);box(i.w*0.6,0.07,i.d,mat(0xD8CDB8),i.x,0.4,i.z);marble(i.x+i.w*0.8,0.4,i.z+i.d/2);return 0.7;},
+bar:function(i){box(i.w,0.05,i.d,mat(T.top),i.x,1.0,i.z);legs(i.x,i.z,i.w,i.d,1.0,mat(T.frame));return 1.25;},
+cart:function(i){
+  box(i.w,0.04,i.d,mat(T.top),i.x,0.86,i.z);box(i.w,0.03,i.d,mat(T.top),i.x,0.3,i.z);legs(i.x,i.z,i.w,i.d,0.86,mat(T.frame));
+  for(var a=0;a<4;a++)marble(i.x+(a+0.5)*i.w/4,0.9,i.z+i.d/2);spot(i.x+i.w/2,i.z+i.d/2,0.9);
+  return 1.15;},
+screen:function(i){
+  var m=mat(T.furn);for(var z=i.z0;z<i.z1;z+=0.11)box(0.08,2.4,0.035,m,i.x,0,z);box(0.08,0.05,i.z1-i.z0,m,i.x,2.4,i.z0);
+  label(i.l,i.x,2.6,(i.z0+i.z1)/2);return 0;},
+glass:function(i){
+  var h=i.h||H,d=i.z1-i.z0;
+  box(0.02,h,d,mat(0xBFE9FF,{transparent:true,opacity:0.16,roughness:0.05,depthWrite:false}),i.x,0,i.z0,true);
+  var f=mat(T.frame,{metalness:0.5});box(0.05,0.05,d,f,i.x-0.015,h-0.05,i.z0);box(0.05,0.05,d,f,i.x-0.015,0,i.z0);
+  box(0.05,h,0.05,f,i.x-0.015,0,i.z0);box(0.05,h,0.05,f,i.x-0.015,0,i.z1-0.05);
+  label(i.l,i.x,h<H?h+0.2:2.3,(i.z0+i.z1)/2);return 0;},
+torch:function(i){
+  var st=mat(0xB9C0C6,{metalness:0.8,roughness:0.3}),cx=i.x+i.w/2,cz=i.z+i.d/2;
+  box(i.w,0.04,i.d,st,i.x,0.86,i.z);legs(i.x,i.z,i.w,i.d,0.86,mat(T.frame));
+  box(i.w,0.02,i.d,mat(0x4A4D52),i.x,0.2,i.z);
+  box(i.w,0.3,i.d,st,i.x,1.95,i.z);                       // 排氣罩
+  box(0.22,H-2.25-0.2,0.22,st,cx-0.11,2.25,cz-0.11);       // 直管
+  box(L+0.3-cx,0.2,0.2,st,cx,H-0.3,cz-0.1);                // 橫管去陽台
+  cyl(0.02,0.14,mat(0x55585C,{metalness:0.8}),cx,0.9,cz,10);
+  var fl=new THREE.Mesh(new THREE.ConeGeometry(0.035,0.22,12),mat(0xFFB15A,{emissive:0xFF7A1F,emissiveIntensity:2}));fl.position.set(cx,1.15,cz);world.add(fl);
+  var pl=new THREE.PointLight(0xFF8A3D,0.9,3.2,2);pl.position.set(cx,1.25,cz);world.add(pl);
+  return 2.45;},
+kiln:function(i){
+  box(0.5,0.5,0.5,mat(T.frame,{metalness:0.5}),i.x+0.05,0,i.z+0.05);
+  box(0.6,0.6,0.6,mat(0xC9CED3,{metalness:0.6,roughness:0.4}),i.x,0.5,i.z);
+  box(0.36,0.3,0.012,mat(0x2A2B2E),i.x+0.12,0.68,i.z+0.6,true);
+  box(0.3,0.02,0.014,mat(0xFF8A3D,{emissive:0xFF5A00,emissiveIntensity:2}),i.x+0.15,0.66,i.z+0.6,true);
+  i.w=0.6;i.d=0.6;return 1.35;},
+rack:function(i){
+  var m=mat(T.frame,{metalness:0.4});box(i.w,1.8,0.03,m,i.x,0,i.z<1?i.z:i.z+i.d-0.03);box(0.03,1.8,i.d,m,i.x,0,i.z);box(0.03,1.8,i.d,m,i.x+i.w-0.03,0,i.z);
+  [0.35,0.75,1.15,1.55].forEach(function(y,n){box(i.w,0.025,i.d,m,i.x,y,i.z);
+    for(var a=0;a<5;a++){var c=T.marbles[(a+n)%T.marbles.length];var r=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,i.w*0.85,8),mat(c,{emissive:c,emissiveIntensity:0.25,roughness:0.2}));r.rotation.z=Math.PI/2;r.position.set(i.x+i.w/2,y+0.045,i.z+0.08+a*(i.d-0.16)/4);world.add(r);}});
+  return 2.0;},
+ext:function(i){cyl(0.07,0.5,mat(0xD12B2B,{roughness:0.4}),i.x,0,i.z,14);cyl(0.025,0.08,mat(0x222222),i.x,0.5,i.z,8);label('滅火器',i.x,0.8,i.z);return 0;}
+};
+
+function room(){
+  var wm=mat(T.wall,{roughness:0.95}),cm=mat(T.wall,{roughness:0.9});
+  plane(L,W,mat(T.floor,{roughness:0.9}),L/2,0,W/2,-Math.PI/2,0);
+  plane(L,W,mat(T.ceil,{roughness:1}),L/2,H,W/2,Math.PI/2,0);
+  plane(L,H,wm,L/2,H/2,0,0,0);                 // 上牆
+  plane(L,H,wm,L/2,H/2,W,0,Math.PI);           // 下牆
+  plane(W,H,wm,0,H/2,W/2,0,Math.PI/2);         // 左牆（樓梯間）
+  plane(W,H,wm,L,H/2,W/2,0,-Math.PI/2);        // 右牆（陽台）
+  // 柱位：300 / 530 / 530，照原圖
+  [[0,0.3],[2.665,0.53],[7.855,0.53]].forEach(function(c){box(c[1],H,0.13,cm,c[0],0,0);box(c[1],H,0.13,cm,c[0],0,W-0.13);});
+  // 入口門（左牆下角）
+  box(0.04,2.1,1.0,mat(T.frame),0.005,0,2.72,true);label('入口',0.1,2.3,3.22);
+  // 陽台門（位置待確認）與陽台
+  box(0.03,2.2,1.2,mat(0xCFE9FF,{emissive:0x9FCBEA,emissiveIntensity:0.35,roughness:0.1}),L-0.035,0,1.33,true);
+  box(BAL,0.1,W,mat(0x8A8C8A),L,-0.1,0);
+  var rm=mat(0x555759,{metalness:0.6});box(0.04,1.1,W,rm,L+BAL-0.04,0,0);box(BAL,1.1,0.04,rm,L,0,0);box(BAL,1.1,0.04,rm,L,0,W-0.04);
+  cyl(0.12,1.3,mat(0x3F7FBF,{metalness:0.5,roughness:0.4}),L+0.45,0,0.45);cyl(0.12,1.3,mat(0xC9CED3,{metalness:0.5,roughness:0.4}),L+0.45,0,0.8);
+  label('氣瓶櫃（陽台）',L+0.45,1.6,0.6);label('排氣出口',L+0.4,H-0.05,1.9);
+}
+
+function lights(){
+  world.add(new THREE.HemisphereLight(0xffffff,T.floor,T.hemi));
+  var s=new THREE.DirectionalLight(0xffffff,T.sun);s.position.set(4,9,7);s.target.position.set(L/2,0,W/2);
+  s.castShadow=true;s.shadow.mapSize.set(2048,2048);var c=s.shadow.camera;c.left=-9;c.right=9;c.top=6;c.bottom=-6;c.near=1;c.far=25;s.shadow.bias=-0.0006;
+  world.add(s);world.add(s.target);
+  if(T.fill>0)[2,6,10].forEach(function(x){var p=new THREE.PointLight(T.fillCol,T.fill,7,2);p.position.set(x,H-0.25,W/2);world.add(p);});
+}
+
+function build(key){
+  cur=key;T=THEMES[key];mi=0;
+  if(world){scene.remove(world);world.traverse(function(o){if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});}
+  labelBox.textContent='';labels=[];
+  world=new THREE.Group();scene.add(world);
+  scene.background=new THREE.Color(T.bg);renderer.toneMappingExposure=T.exp;
+  room();lights();
+  PLANS[key].forEach(function(i){var top=BUILD[i.k](i);if(top&&i.l)label(i.l,i.x+(i.w||0)/2,top,i.z+(i.d||0)/2,i.hot);});
+  document.getElementById('n-t').textContent=T.t;document.getElementById('n-d').textContent=T.d;document.getElementById('n-m').innerHTML=T.m;
+  ['A','B','C','D'].forEach(function(k){document.getElementById('s-'+k).setAttribute('aria-pressed',k===key?'true':'false');});
+}
+
+var VIEWS={
+  bird:{p:[6.6,7.2,11.2],t:[6.3,0.6,1.9],fit:1},
+  door:{p:[0.45,1.6,3.05],t:[6,1.1,1.7]},
+  talk:{p:[4.4,1.6,3.5],t:[7.4,1.0,1.1]},
+  work:{p:[8.25,1.65,3.4],t:[10.7,1.0,0.5]},
+  top:{p:[6.85,15,1.94],t:[6.85,0,1.925],fit:1}
+};
+var tw=null,reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function go(name,instant){
+  var v=VIEWS[name],t=new THREE.Vector3().fromArray(v.t),p=new THREE.Vector3().fromArray(v.p);
+  if(v.fit){var k=Math.max(1,1.55/camera.aspect);p.sub(t).multiplyScalar(k).add(t);}
+  if(instant||reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}
+  else tw={p0:camera.position.clone(),t0:controls.target.clone(),p1:p,t1:t,s:performance.now()};
+  Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed',n===name?'true':'false');});
+}
+
+function resize(){var w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+var v3=new THREE.Vector3();
+function frame(now){
+  requestAnimationFrame(frame);
+  if(tw){var u=Math.min(1,(now-tw.s)/700),e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2;camera.position.lerpVectors(tw.p0,tw.p1,e);controls.target.lerpVectors(tw.t0,tw.t1,e);if(u>=1)tw=null;}
+  controls.update();renderer.render(scene,camera);
+  var w=stage.clientWidth,h=stage.clientHeight;
+  for(var n=0;n<labels.length;n++){var lb=labels[n];v3.copy(lb.p).project(camera);
+    var vis=showLabels&&v3.z<1&&v3.x>-1.1&&v3.x<1.1&&v3.y>-1.1&&v3.y<1.1;
+    lb.el.hidden=!vis;if(vis){lb.el.style.left=((v3.x*0.5+0.5)*w).toFixed(1)+'px';lb.el.style.top=((-v3.y*0.5+0.5)*h).toFixed(1)+'px';}}
+}
+
+document.querySelectorAll('[data-s]').forEach(function(b){b.addEventListener('click',function(){build(b.getAttribute('data-s'));});});
+document.querySelectorAll('[data-v]').forEach(function(b){b.addEventListener('click',function(){go(b.getAttribute('data-v'));});});
+document.getElementById('t-lab').addEventListener('click',function(){showLabels=!showLabels;this.setAttribute('aria-pressed',showLabels?'true':'false');});
+canvas.addEventListener('pointerdown',function(){tw=null;});
+if(window.ResizeObserver)new ResizeObserver(resize).observe(stage);else window.addEventListener('resize',resize);
+
+resize();build('A');go('bird',true);requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
