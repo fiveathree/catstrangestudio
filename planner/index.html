@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>裝修 3D 規劃</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>裝修 3D 規劃</h1>
+  <div class="acts">
+    <button id="b-undo" title="復原上一步">復原</button>
+    <button id="b-sample">載入範例</button>
+    <button id="b-import">開啟檔案</button>
+    <button id="b-export">儲存檔案</button>
+    <button id="b-png">存 3D 圖片</button>
+    <button id="b-clear" class="warn">清空</button>
+    <input type="file" id="f-import" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<main>
+<aside id="side">
+  <section id="sel" hidden>
+    <h2 id="sel-title">選取中</h2>
+    <div class="grid2" id="sel-fields"></div>
+    <div class="row">
+      <button id="sel-rot">旋轉 90°</button>
+      <button id="sel-dup">複製</button>
+      <button id="sel-del" class="warn">刪除</button>
+    </div>
+  </section>
+
+  <details open>
+    <summary>空間尺寸</summary>
+    <div class="grid2">
+      <label for="r-w">長 (m)</label><input id="r-w" type="number" min="1" max="60" step="0.05">
+      <label for="r-d">闊 (m)</label><input id="r-d" type="number" min="1" max="60" step="0.05">
+      <label for="r-a">面積 (m²)</label><input id="r-a" type="number" min="1" max="3000" step="0.1">
+      <label for="r-p">面積 (坪)</label><input id="r-p" type="number" min="0.3" max="900" step="0.1">
+      <label for="r-h">樓底高 (m)</label><input id="r-h" type="number" min="2" max="8" step="0.05">
+    </div>
+    <label class="chk"><input id="r-shell" type="checkbox"> 用矩形外牆（自己描外牆就取消）</label>
+    <p class="tip">改面積會按現有長闊比例一齊縮放。</p>
+  </details>
+
+  <details open>
+    <summary>質感</summary>
+    <h3>地板</h3><div class="sw" id="m-floor"></div>
+    <h3>牆身</h3><div class="sw" id="m-wall"></div>
+    <h3>天花</h3><div class="sw" id="m-ceil"></div>
+  </details>
+
+  <details open>
+    <summary>水電位</summary>
+    <div class="pal" id="pal-util"></div>
+    <p class="tip">㩒一下加入，再喺平面圖拖去位置。貼近牆會自動吸附上牆。</p>
+    <div class="tw"><table id="sched"><thead><tr><th>項目</th><th>X</th><th>Y</th><th>離地</th></tr></thead><tbody></tbody></table></div>
+  </details>
+
+  <details>
+    <summary>門窗</summary>
+    <div class="pal" id="pal-open"></div>
+  </details>
+
+  <details>
+    <summary>電器・傢俬</summary>
+    <div class="pal" id="pal-furn"></div>
+  </details>
+
+  <details>
+    <summary>平面圖底圖</summary>
+    <label for="f-bg" class="filebtn">上傳平面圖（圖片或 PDF）</label>
+    <input type="file" id="f-bg" accept="image/*,application/pdf,.pdf" hidden>
+    <ol class="tip">
+      <li>上傳之後底圖會墊喺平面下面。</li>
+      <li>揀「量比例」，喺圖上㩒兩點，再輸入嗰段嘅實際長度。</li>
+      <li>用「移底圖」對準位置，再用「畫牆」照住描。</li>
+    </ol>
+    <div class="grid2">
+      <label for="bg-op">透明度</label><input id="bg-op" type="range" min="0.1" max="1" step="0.05">
+    </div>
+    <label class="chk"><input id="bg-show" type="checkbox"> 顯示底圖</label>
+    <label class="chk"><input id="bg-3d" type="checkbox"> 3D 地面都顯示底圖</label>
+    <div class="row"><button id="bg-del" class="warn">移除底圖</button></div>
+  </details>
+</aside>
+
+<section id="p2d" class="pane">
+  <div class="tb">
+    <div class="seg" role="group" aria-label="工具">
+      <button data-tool="select" aria-pressed="true">選取</button>
+      <button data-tool="wall" aria-pressed="false">畫牆</button>
+      <button data-tool="cal" aria-pressed="false">量比例</button>
+      <button data-tool="bg" aria-pressed="false">移底圖</button>
+    </div>
+    <label class="chk"><input id="ortho" type="checkbox" checked> 正交</label>
+    <button id="b-fit">置中</button>
+    <button id="b-wend" hidden>完成畫牆</button>
+  </div>
+  <form id="calform" class="tb" hidden>
+    <label for="cal-m">呢兩點實際距離 (m)</label>
+    <input id="cal-m" type="number" min="0.01" step="0.01" required>
+    <button type="submit">套用</button>
+    <button type="button" id="cal-x">取消</button>
+  </form>
+  <svg id="plan" aria-label="平面圖編輯區"></svg>
+  <div class="hint" id="hint"></div>
+</section>
+
+<section id="p3d" class="pane">
+  <div class="tb">
+    <div class="seg" role="group" aria-label="視角">
+      <button data-view="bird">鳥瞰</button>
+      <button data-view="in">室內</button>
+      <button data-view="top">俯視</button>
+    </div>
+    <label class="chk"><input id="o-lab" type="checkbox" checked> 標籤</label>
+    <label class="chk"><input id="o-pipe" type="checkbox" checked> 管線</label>
+    <label class="chk"><input id="o-ceil" type="checkbox" checked> 天花</label>
+  </div>
+  <div id="glwrap"><canvas id="gl" aria-label="3D 預覽，可拖動旋轉"></canvas><div id="labels"></div></div>
+</section>
+</main>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
