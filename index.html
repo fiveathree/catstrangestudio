@@ -18,7 +18,12 @@
 html,body{height:100%}
 body{background:var(--ink);color:var(--fg);font-family:var(--sans);overflow:hidden;display:flex;flex-direction:column}
 #stage{position:relative;width:100%;flex:1;min-height:0}
-#planwrap{flex:none;height:clamp(150px,34vh,400px);border-top:1px solid var(--line);background:#0D1018;padding:8px 16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#plantog{flex:none;width:100%;min-height:30px;padding:4px 16px;border:0;border-top:1px solid var(--line);border-radius:0;background:#0D1018;color:var(--dim);font-size:12.5px;letter-spacing:.08em;display:flex;align-items:center;justify-content:center;gap:8px}
+#plantog:hover{color:var(--fg);border-color:var(--line)}
+#plantog svg{width:12px;height:8px;fill:currentColor;transition:transform .2s}
+#plantog[aria-expanded="false"] svg{transform:rotate(180deg)}
+@media (prefers-reduced-motion:reduce){#plantog svg{transition:none}}
+#planwrap{flex:none;height:clamp(150px,34vh,400px);background:#0D1018;padding:8px 16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 #planwrap figure{margin:0;min-width:0;min-height:0;display:flex;flex-direction:column;gap:4px}
 #planwrap figcaption{font-size:12.5px;color:var(--dim);letter-spacing:.06em}
 #orig,#plan{flex:1;min-height:0;width:100%;display:block;touch-action:manipulation;cursor:crosshair}
@@ -108,6 +113,7 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
   </div>
   <div id="err" hidden>3D 元件載入唔到。請重新整理頁面，或者換一個瀏覽器再開。</div>
 </div>
+<button id="plantog" aria-expanded="true" aria-controls="planwrap"><svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1L6 7L11 1Z"/></svg><span id="plantog-t">收起平面圖</span></button>
 <div id="planwrap">
   <figure>
     <figcaption>原本平面圖</figcaption>
@@ -418,6 +424,11 @@ document.getElementById('t-lab').addEventListener('click',function(){showLabels=
 canvas.addEventListener('pointerdown',function(){tw=null;});
 if(window.ResizeObserver)new ResizeObserver(resize).observe(stage);else window.addEventListener('resize',resize);
 
+(function(){var b=document.getElementById('plantog'),w=document.getElementById('planwrap'),t=document.getElementById('plantog-t');
+  function set(open,keep){w.hidden=!open;b.setAttribute('aria-expanded',open?'true':'false');t.textContent=open?'收起平面圖':'展開平面圖';if(keep)try{localStorage.setItem('studio3d-plan',open?'1':'0');}catch(e){}resize();}
+  b.addEventListener('click',function(){set(w.hidden,true);});
+  try{if(localStorage.getItem('studio3d-plan')==='0')set(false);}catch(e){}
+})();
 resize();build('A');go('bird',true);requestAnimationFrame(frame);
 })();
 </script>
