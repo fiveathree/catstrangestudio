@@ -16,8 +16,33 @@
   --serif:'Noto Serif TC','Songti TC','PMingLiU',serif;
 }
 html,body{height:100%}
-body{background:var(--ink);color:var(--fg);font-family:var(--sans);overflow:hidden}
-#stage{position:relative;width:100%;height:100%}
+body{background:var(--ink);color:var(--fg);font-family:var(--sans);overflow:hidden;display:flex;flex-direction:column}
+#stage{position:relative;width:100%;flex:1;min-height:0}
+#planwrap{position:relative;flex:none;height:clamp(150px,36vh,420px);border-top:1px solid var(--line);background:#0D1018;padding:6px 16px}
+#plan{width:100%;height:100%;display:block;touch-action:manipulation}
+#t-img{position:absolute;right:16px;top:8px;background:var(--panel);color:var(--dim);border-color:var(--line);font-size:12.5px;font-weight:400;min-height:34px;padding:6px 10px}
+#t-img[aria-pressed="true"]{color:var(--fg);border-color:var(--pick)}
+#pl-img{opacity:.4;filter:invert(1)}
+#plan .rm{fill:none;stroke:var(--fg);stroke-width:.07}
+#plan .bal{fill:none;stroke:var(--dim);stroke-width:.03;stroke-dasharray:.12}
+#plan .zb{fill:var(--pick);fill-opacity:0;cursor:crosshair}
+#plan .zb.on{fill-opacity:.12}
+#plan .it{fill:#2A3145;stroke:#8E9AB8;stroke-width:.025}
+#plan .it.dp{fill:#3A3470;stroke:#A99BFF}
+#plan .it.hot{fill:var(--pick);stroke:var(--pick)}
+#plan .it:hover{stroke:var(--focus);stroke-width:.06}
+#plan .gl{stroke:#7FD6FF;stroke-width:.06}
+#plan .sc{stroke:#C29E72;stroke-width:.08}
+#plan .ex{fill:#E0463E}
+#plan .zt{fill:#161B28;stroke:var(--line);stroke-width:.02;cursor:pointer}
+#plan .zt:hover{stroke:var(--focus);stroke-width:.04}
+#plan .zt.on{fill:var(--pick);stroke:var(--pick)}
+#plan .zl{font-size:.21px;fill:var(--fg);text-anchor:middle;pointer-events:none;font-family:var(--sans)}
+#plan .zt.on + .zl{fill:var(--pick-ink);font-weight:700}
+#plan .tx{font-size:.15px;fill:var(--fg);text-anchor:middle;pointer-events:none;font-family:var(--sans);paint-order:stroke;stroke:#0D1018;stroke-width:.045}
+#plan .cone{fill:var(--focus);fill-opacity:.3}
+#plan .camdot{fill:var(--focus);stroke:#fff;stroke-width:.03}
+.lb.on{background:var(--focus);color:#06131C;border-color:var(--focus);font-weight:700;z-index:2}
 #gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .lb{position:absolute;transform:translate(-50%,-100%);padding:2px 7px;border-radius:3px;background:rgba(10,12,18,.78);color:var(--fg);font-size:12px;white-space:nowrap;border:1px solid var(--line)}
@@ -44,6 +69,11 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
   #note{max-width:none;width:100%;padding:10px 12px}
   #note h2{font-size:18px}
   #note p{font-size:12.5px;line-height:1.55}
+  #plan .tx{display:none}
+  #plan .zl{font-size:.34px}
+  #planwrap{height:auto;padding-block:4px}
+  #plan{height:auto;aspect-ratio:15/5.8}
+  #t-img{display:none}
   .lb{font-size:10.5px;padding:1px 5px}
 }
 </style>
@@ -64,12 +94,10 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
   </div>
   <div class="bar" id="bottom">
     <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
-      <div id="hint">拖動旋轉・滾輪或雙指縮放・右鍵或雙指平移</div>
+      <div id="hint">拖動旋轉・滾輪或雙指縮放・㩒下面平面圖或分區，3D 會跟住移</div>
       <div class="grp" role="group" aria-label="視角">
         <button id="v-bird" data-v="bird" aria-pressed="true">鳥瞰</button>
         <button id="v-door" data-v="door" aria-pressed="false">入口</button>
-        <button id="v-talk" data-v="talk" aria-pressed="false">洽談區</button>
-        <button id="v-work" data-v="work" aria-pressed="false">工作區</button>
         <button id="v-top" data-v="top" aria-pressed="false">平面</button>
         <button id="t-lab" aria-pressed="true">標籤</button>
       </div>
@@ -77,6 +105,10 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
     <div id="note"><h2 id="n-t"></h2><p id="n-d"></p><p id="n-m"></p></div>
   </div>
   <div id="err" hidden>3D 元件載入唔到。請重新整理頁面，或者換一個瀏覽器再開。</div>
+</div>
+<div id="planwrap">
+  <svg id="plan" viewBox="-1.15 -0.6 15 5.8" preserveAspectRatio="xMidYMid meet" aria-label="平面圖：㩒任何位置或者分區，3D 會跟住移過去"></svg>
+  <button id="t-img" aria-pressed="true">原平面圖</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -252,6 +284,57 @@ rack:function(i){
 ext:function(i){cyl(0.07,0.5,mat(0xD12B2B,{roughness:0.4}),i.x,0,i.z,14);cyl(0.025,0.08,mat(0x222222),i.x,0.5,i.z,8);label('滅火器',i.x,0.8,i.z);return 0;}
 };
 
+var ZONES={
+A:[['展示區',0,5.6],['洽談區',5.6,7.9],['工作區',7.9,L]],
+B:[['接待・展示區',0,5.6],['玻璃實驗室（工作區）',5.6,L]],
+C:[['玄關',0,2.4],['洽談區',2.4,7.9],['工作區',7.9,L]],
+D:[['展示區',0,4.0],['洽談・收銀',4.0,7.7],['開放工坊',7.7,L]]};
+var plan=document.getElementById('plan'),zone=-1,zoneMesh=null,camStr='',showImg=true;
+function PR(x,z,w,d,cls,extra){return '<rect x="'+x+'" y="'+z+'" width="'+w+'" height="'+d+'" class="'+cls+'"'+(extra||'')+'/>';}
+function drawPlan(key){
+  var o=[],Z=ZONES[key],tx=[];
+  o.push('<image id="pl-img" href="assets/plan.png" x="-1.049" y="-0.533" width="14.792" height="4.816" preserveAspectRatio="none"'+(showImg?'':' display="none"')+'/>');
+  Z.forEach(function(z,n){o.push(PR(z[1],0,z[2]-z[1],W,'zb',' data-z="'+n+'"'));});
+  o.push(PR(L,0,BAL,W,'bal'));
+  PLANS[key].forEach(function(i){
+    var t=i.l?' data-l="'+i.l+'"':'',c=i.hot?'it hot':(i.k==='case'||i.k==='shelf'||i.k==='ped'||i.k==='cart')?'it dp':'it';
+    if(i.k==='ped')o.push('<circle cx="'+i.x+'" cy="'+i.z+'" r="'+(i.big?0.24:0.17)+'" class="'+c+'"'+t+'/>');
+    else if(i.k==='stool')o.push('<circle cx="'+i.x+'" cy="'+i.z+'" r="0.16" class="it"/>');
+    else if(i.k==='ext')o.push('<circle cx="'+i.x+'" cy="'+i.z+'" r="0.09" class="ex" data-l="滅火器"/>');
+    else if(i.k==='glass'||i.k==='screen')o.push('<line x1="'+i.x+'" y1="'+i.z0+'" x2="'+i.x+'" y2="'+i.z1+'" class="'+(i.k==='glass'?'gl':'sc')+'"'+t+'/>');
+    else o.push(PR(i.x,i.z,i.w||0.6,i.d||0.6,c,t));
+    if(i.l&&i.k!=='glass'&&i.k!=='screen'){var w=i.w||(i.k==='kiln'?0.6:0),d=i.d||(i.k==='kiln'?0.6:0),ty=i.k==='ped'?i.z+0.45:(i.z<0.5&&d<0.8?i.z+d+0.2:(i.z+d>W-0.5&&d<0.8?i.z-0.08:i.z+d/2+0.05));tx.push('<text class="tx" x="'+(i.x+w/2)+'" y="'+ty+'">'+i.l+'</text>');}
+  });
+  o.push(PR(0,0,L,W,'rm',' pointer-events="none"'));
+  o.push(tx.join(''));
+  Z.forEach(function(z,n){o.push(PR(z[1]+0.04,W+0.2,z[2]-z[1]-0.08,0.46,'zt',' data-z="'+n+'" rx="0.06"'));o.push('<text class="zl" x="'+(z[1]+z[2])/2+'" y="'+(W+0.5)+'">'+z[0]+'</text>');});
+  o.push('<g id="pl-cam" pointer-events="none"><path d="M0 0L1.1 -0.5A1.2 1.2 0 0 1 1.1 0.5Z" class="cone"/><circle r="0.13" class="camdot"/></g>');
+  plan.innerHTML=o.join('');zone=-1;camStr='';
+}
+function syncPlan(){
+  var cx=camera.position.x,cz=camera.position.z,tx=controls.target.x,tz=controls.target.z;
+  var s='translate('+Math.max(-1,Math.min(L+BAL-0.1,cx)).toFixed(2)+','+Math.max(-0.45,Math.min(W+0.98,cz)).toFixed(2)+') rotate('+(Math.atan2(tz-cz,tx-cx)*180/Math.PI).toFixed(0)+')';
+  if(s!==camStr){camStr=s;var g=document.getElementById('pl-cam');if(g)g.setAttribute('transform',s);}
+  var Z=ZONES[cur],n=0;for(var a=0;a<Z.length;a++)if(tx>=Z[a][1])n=a;
+  if(n!==zone){zone=n;plan.querySelectorAll('[data-z]').forEach(function(el){el.classList.toggle('on',+el.getAttribute('data-z')===n);});
+    if(!zoneMesh){zoneMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({color:0xFF9A4D,transparent:true,opacity:0.13,depthWrite:false}));zoneMesh.rotation.x=-Math.PI/2;scene.add(zoneMesh);}
+    zoneMesh.scale.set(Z[n][2]-Z[n][1],W,1);zoneMesh.position.set((Z[n][1]+Z[n][2])/2,0.006,W/2);}
+}
+function fly(p,t){
+  if(reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}else tw={p0:camera.position.clone(),t0:controls.target.clone(),p1:p,t1:t,s:performance.now()};
+  Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});
+}
+function flyZone(n){var z=ZONES[cur][n],mid=(z[1]+z[2])/2,len=z[2]-z[1],k=Math.max(1,1.2/camera.aspect),dist=(2.4+len*0.7)*k;fly(new THREE.Vector3(mid,2+dist*0.8,W/2+dist),new THREE.Vector3(mid,0.6,W/2));}
+plan.addEventListener('click',function(e){
+  var zt=e.target.closest&&e.target.closest('.zt');if(zt){flyZone(+zt.getAttribute('data-z'));return;}
+  var m=plan.getScreenCTM();if(!m)return;var q=plan.createSVGPoint();q.x=e.clientX;q.y=e.clientY;q=q.matrixTransform(m.inverse());
+  var t=new THREE.Vector3(Math.max(0,Math.min(L,q.x)),0.9,Math.max(0,Math.min(W,q.y))),d=camera.position.clone().sub(controls.target);
+  if(d.length()>9)d.setLength(9);fly(t.clone().add(d),t);
+});
+plan.addEventListener('pointerover',function(e){var l=e.target.getAttribute&&e.target.getAttribute('data-l');labels.forEach(function(lb){lb.el.classList.toggle('on',!!l&&lb.el.textContent===l);});});
+plan.addEventListener('pointerleave',function(){labels.forEach(function(lb){lb.el.classList.remove('on');});});
+document.getElementById('t-img').addEventListener('click',function(){showImg=!showImg;this.setAttribute('aria-pressed',showImg?'true':'false');var im=document.getElementById('pl-img');if(im)im.setAttribute('display',showImg?'inline':'none');});
+
 function room(){
   var wm=mat(T.wall,{roughness:0.95}),cm=mat(T.wall,{roughness:0.9});
   plane(L,W,mat(T.floor,{roughness:0.9}),L/2,0,W/2,-Math.PI/2,0);
@@ -288,6 +371,7 @@ function build(key){
   scene.background=new THREE.Color(T.bg);renderer.toneMappingExposure=T.exp;
   room();lights();
   PLANS[key].forEach(function(i){var top=BUILD[i.k](i);if(top&&i.l)label(i.l,i.x+(i.w||0)/2,top,i.z+(i.d||0)/2,i.hot);});
+  drawPlan(key);
   document.getElementById('n-t').textContent=T.t;document.getElementById('n-d').textContent=T.d;document.getElementById('n-m').innerHTML=T.m;
   ['A','B','C','D'].forEach(function(k){document.getElementById('s-'+k).setAttribute('aria-pressed',k===key?'true':'false');});
 }
@@ -295,8 +379,6 @@ function build(key){
 var VIEWS={
   bird:{p:[6.6,7.2,11.2],t:[6.3,0.6,1.9],fit:1},
   door:{p:[0.45,1.6,3.05],t:[6,1.1,1.7]},
-  talk:{p:[4.4,1.6,3.5],t:[7.4,1.0,1.1]},
-  work:{p:[8.25,1.65,3.4],t:[10.7,1.0,0.5]},
   top:{p:[6.85,15,1.94],t:[6.85,0,1.925],fit:1}
 };
 var tw=null,reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -313,7 +395,7 @@ var v3=new THREE.Vector3();
 function frame(now){
   requestAnimationFrame(frame);
   if(tw){var u=Math.min(1,(now-tw.s)/700),e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2;camera.position.lerpVectors(tw.p0,tw.p1,e);controls.target.lerpVectors(tw.t0,tw.t1,e);if(u>=1)tw=null;}
-  controls.update();renderer.render(scene,camera);
+  controls.update();renderer.render(scene,camera);syncPlan();
   var w=stage.clientWidth,h=stage.clientHeight;
   for(var n=0;n<labels.length;n++){var lb=labels[n];v3.copy(lb.p).project(camera);
     var vis=showLabels&&v3.z<1&&v3.x>-1.1&&v3.x<1.1&&v3.y>-1.1&&v3.y<1.1;
