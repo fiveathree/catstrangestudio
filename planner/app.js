@@ -295,7 +295,7 @@ function build3d() {
   var s = new THREE.DirectionalLight(0xffffff, 0.55), ext = Math.max(W, D) * 0.8 + 2; s.position.set(cx - W * 0.3, Math.max(8, ext * 1.5), cz + D * 0.9 + 3); s.target.position.set(cx, 0, cz); s.castShadow = true; s.shadow.mapSize.set(2048, 2048); s.shadow.camera.left = -ext; s.shadow.camera.right = ext; s.shadow.camera.top = ext; s.shadow.camera.bottom = -ext; s.shadow.camera.near = 0.5; s.shadow.camera.far = ext * 6 + 20; s.shadow.bias = -0.0006; grp.add(s); grp.add(s.target);
 }
 function view(name) {
-  if (!ok3d) return; stopTour(); var b = bounds(), W = b.x1 - b.x0, D = b.y1 - b.y0, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, m = Math.max(W, D), k = Math.max(1, 1.3 / (camera.aspect || 1));
+  if (!ok3d) return; stopTour(); setFollow(false); var b = bounds(), W = b.x1 - b.x0, D = b.y1 - b.y0, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, m = Math.max(W, D), k = Math.max(1, 1.3 / (camera.aspect || 1));
   if (name === 'bird') { controls.target.set(cx, 0.8, cz); camera.position.set(cx + W * 0.06, (m * 0.62 + 1.6) * k, cz + (D / 2 + m * 0.55 + 1.2) * k); }
   else if (name === 'in') { controls.target.set(cx, 1.2, cz); camera.position.set(b.x0 + 0.5, 1.6, b.y1 - 0.5); }
   else { controls.target.set(cx, 0, cz); camera.position.set(cx, (m * 1.25 + 2) * k, cz + 0.02); }
@@ -306,7 +306,7 @@ var v3 = ok3d ? new THREE.Vector3() : null, lastT = 0;
 function frame(now) {
   requestAnimationFrame(frame); if (!ok3d) return;
   var dt = Math.min(0.1, Math.max(0, ((now || 0) - lastT) / 1000)); lastT = now || 0;
-  if (cat) { cat.update(dt, camera); if (cat.mode() === 'tour') { var b = bounds(); cat.follow(camera, controls, dt, { x0: b.x0, z0: b.y0, x1: b.x1, z1: b.y1, h: S.room.h }, camDown || (now || 0) < camHold); } }   // 帶參觀期間鏡頭一直跟貓
+  if (cat) { cat.update(dt, camera); if (cat.mode() === 'tour' || followOn) { var b = bounds(); cat.follow(camera, controls, dt, { x0: b.x0, z0: b.y0, x1: b.x1, z1: b.y1, h: S.room.h }, camDown || (now || 0) < camHold); } }   // 帶參觀期間鏡頭一直跟貓
   controls.update(); renderer.render(scene, camera);
   var w = wrap.clientWidth, h = wrap.clientHeight, show = $('o-lab').checked;
   for (var i = 0; i < labs.length; i++) { var l = labs[i]; v3.copy(l.p).project(camera); var vis = show && v3.z < 1 && Math.abs(v3.x) < 1.05 && Math.abs(v3.y) < 1.05; l.el.hidden = !vis; if (vis) { l.el.style.left = ((v3.x * 0.5 + 0.5) * w).toFixed(1) + 'px'; l.el.style.top = ((-v3.y * 0.5 + 0.5) * h).toFixed(1) + 'px'; } }
@@ -344,6 +344,9 @@ function tourStops() {   // 好似日本地產經紀咁：開場、讀返你嘅�
   s.push({ x: cx, z: cz, say: (fs.length ? '仲有 ' + fs.length + ' 件傢俬，你可以自己慢慢睇。' : '') + ut + '以上就係全部喇～有興趣隨時再約我睇！喵～' });
   return s;
 }
+var followOn = false;   // 跟貓：任何模式都用跟拍鏡頭；揀視角就停
+function setFollow(on) { followOn = on; $('v-follow').setAttribute('aria-pressed', on ? 'true' : 'false'); }
+$('v-follow').addEventListener('click', function () { setFollow(!followOn); });
 function pressCat(m) { document.querySelectorAll('[data-cm]').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-cm') === m ? 'true' : 'false'); }); }
 function startTour() { if (!cat) return; cat.startTour(tourStops(), function () { pressCat('wander'); }); pressCat('tour'); }
 function stopTour() { if (cat && cat.mode() === 'tour') { cat.setMode('wander'); pressCat('wander'); } }   // 揀視角就當係唔再帶

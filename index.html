@@ -113,6 +113,7 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
         <button id="v-door" data-v="door" aria-pressed="false">入口</button>
         <button id="v-top" data-v="top" aria-pressed="false">平面</button>
         <button id="v-cat" aria-pressed="false">🐈 貓咪視角</button>
+        <button id="v-follow" aria-pressed="false">🎥 跟貓</button>
         <button id="t-lab" aria-pressed="true">標籤</button>
       </div>
     </div>
@@ -346,7 +347,7 @@ function syncPlan(){
     zoneMesh.scale.set(Z[n][2]-Z[n][1],W,1);zoneMesh.position.set((Z[n][1]+Z[n][2])/2,0.006,W/2);}
 }
 function fly(p,t){
-  setCatView(false);stopTour();
+  setCatView(false);stopTour();setFollow(false);
   if(reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}else tw={p0:camera.position.clone(),t0:controls.target.clone(),p1:p,t1:t,s:performance.now()};
   Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});
 }
@@ -442,7 +443,7 @@ document.querySelectorAll('[data-cm]').forEach(function(b){b.addEventListener('c
 /* 貓咪視角：鏡頭放喺貓眼，OrbitControls 暫停；退出時還返原本操作 */
 var catView=false,catSaved=null,catBtn=document.getElementById('v-cat'),hintEl=document.getElementById('hint'),hintTxt=hintEl.textContent;
 function setCatView(on){
-  if(on===catView)return;catView=on;catG.visible=!on;controls.enabled=!on;
+  if(on===catView)return;if(on)setFollow(false);catView=on;catG.visible=!on;controls.enabled=!on;
   camera.fov=on?70:45;camera.near=on?0.02:0.05;camera.updateProjectionMatrix();
   catBtn.setAttribute('aria-pressed',on?'true':'false');
   hintEl.textContent=on?'貓咪視角：鏡頭跟住狸花貓行・再㩒一次或者揀其他視角就返回':hintTxt;
@@ -452,10 +453,18 @@ function setCatView(on){
 catBtn.addEventListener('click',function(){
   if(!catView){setCatView(true);return;}
   setCatView(false);
-  if(touring())return;   // 帶緊參觀：交返畀跟拍鏡頭
+  if(touring()||followOn)return;   // 帶緊參觀或者開咗跟貓：交返畀跟拍鏡頭
   if(reduce){camera.position.copy(catSaved.p);controls.target.copy(catSaved.t);}
   else tw={p0:camera.position.clone(),t0:controls.target.clone(),p1:catSaved.p,t1:catSaved.t,s:performance.now()};
 });
+/* 跟貓：任何模式都用跟拍鏡頭（同帶參觀一樣），自己拖可以轉角度；揀其他視角就停 */
+var followOn=false,folBtn=document.getElementById('v-follow');
+function setFollow(on){
+  if(on===followOn)return;followOn=on;folBtn.setAttribute('aria-pressed',on?'true':'false');
+  if(on){setCatView(false);tw=null;Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});}
+  if(!catView)hintEl.textContent=on?'跟貓：鏡頭一直跟住狸花貓・拖動可以轉角度・再㩒一次或者揀其他視角就返回':hintTxt;
+}
+folBtn.addEventListener('click',function(){setFollow(!followOn);});
 
 var VIEWS={
   bird:{p:[6.6,7.2,11.2],t:[6.3,0.6,1.9],fit:1},
@@ -464,7 +473,7 @@ var VIEWS={
 };
 var tw=null,reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function go(name,instant){
-  setCatView(false);stopTour();
+  setCatView(false);stopTour();setFollow(false);
   var v=VIEWS[name],t=new THREE.Vector3().fromArray(v.t),p=new THREE.Vector3().fromArray(v.p);
   if(v.fit){var k=Math.max(1,1.55/camera.aspect);p.sub(t).multiplyScalar(k).add(t);}
   if(instant||reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}
@@ -479,7 +488,7 @@ function frame(now){
   var dt=Math.min(0.1,Math.max(0,(now-last)/1000));last=now;
   cat.update(dt,camera);
   if(tw){var u=Math.min(1,(now-tw.s)/700),e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2;camera.position.lerpVectors(tw.p0,tw.p1,e);controls.target.lerpVectors(tw.t0,tw.t1,e);if(u>=1)tw=null;}
-  if(catView)cat.eyeCam(camera,controls);else{if(touring())cat.follow(camera,controls,dt,{x0:0,z0:0,x1:L,z1:W,h:H},camDown||now<camHold);controls.update();}
+  if(catView)cat.eyeCam(camera,controls);else{if(touring()||followOn)cat.follow(camera,controls,dt,{x0:0,z0:0,x1:L,z1:W,h:H},camDown||now<camHold);controls.update();}
   renderer.render(scene,camera);syncPlan();
   var w=stage.clientWidth,h=stage.clientHeight;
   cat.place(camera,w,h,catView);

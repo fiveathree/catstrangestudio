@@ -119,7 +119,7 @@ function create(THREE, scene, box) {
     var tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
     function mat(col, o) { var p = { color: col, roughness: 0.95 }; if (o) for (var k in o) p[k] = o[k]; return new THREE.MeshStandardMaterial(p); }
     var fur = mat(0xffffff, { map: tex }), base = mat(0x9C8466), dark = mat(0x3B2E22), light = mat(0xDCCBAE);
-    function part(geo, m, px, py, pz, parent) { var me = new THREE.Mesh(geo, m); me.position.set(px, py, pz); me.castShadow = true; (parent || tb).add(me); return me; }
+    function part(geo, m, px, py, pz, parent) { var me = new THREE.Mesh(geo, m); me.position.set(px, py, pz); me.castShadow = true; me.userData.cat = 1; (parent || tb).add(me); return me; }
     var bodyG = new THREE.SphereGeometry(1, 20, 14); bodyG.rotateX(PI / 2);
     body = part(bodyG, fur, 0, 0.2, 0); body.scale.set(0.1, 0.085, 0.21);
     part(new THREE.SphereGeometry(1, 14, 10), light, 0, 0.19, 0.13).scale.set(0.07, 0.07, 0.07);   // 心口
@@ -289,15 +289,37 @@ function create(THREE, scene, box) {
   function follow(camera, controls, dt, b, hold) {
     v2.set(st.x, lift.position.y + 0.22, st.z);
     v3.copy(controls.target); controls.target.lerp(v2, 1 - Math.exp(-dt * 8)); v3.subVectors(controls.target, v3); camera.position.add(v3);   // 鏡頭同目標一齊移
+    var a = st.act;
+    if (a && a.speak && !hold) {   // 帶參觀到站：鏡頭拉遠，圍住隻貓轉一個圈，睇晒四周
+      v.subVectors(camera.position, controls.target);
+      if (!a.orb) a.orb = { a0: Math.atan2(v.x, v.z), r0: Math.hypot(v.x, v.z), y0: camera.position.y };
+      var o = a.orb, s = Math.min(1, a.t / a.dur), e = s * s * (3 - 2 * s), z = Math.min(1, a.t / 0.9), zo = z * z * (3 - 2 * z);
+      var r = o.r0 + (3.2 - o.r0) * zo, ang = o.a0 + 2 * PI * e, hy = Math.max(b.h - 0.3, lift.position.y + 0.8);   // 升到近天花，越過枱凳望晒成個區
+      v.set(st.x + Math.sin(ang) * r, o.y0 + (hy - o.y0) * zo, st.z + Math.cos(ang) * r); clearPos(controls.target, v, 1.2);
+      if (Math.hypot(v.x - st.x, v.z - st.z) < 1.1) { v.set(st.x + Math.sin(ang) * r, b.h - 0.2, st.z + Math.cos(ang) * r); clearPos(controls.target, v, 1.2); }   // 呢邊太窄：升高由上面望落嚟
+      camera.position.lerp(v, 1 - Math.exp(-dt * 6)); return;
+    }
     var walking = st.path.length > 0 && !st.act, far = camera.position.distanceTo(controls.target) > 2.6;
-    if (hold || !(walking || far)) return;
+    if (hold || !(walking || far)) { unblock(camera, controls); return; }
     var px, pz, py = Math.min(lift.position.y + 1.0, b.h - 0.2), lim = function (x, lo, hi) { return Math.max(lo + 0.25, Math.min(hi - 0.25, x)); };
     if (walking) {
       var A = [0, 0.5, -0.5, 1, -1, 1.5, -1.5];   // 正後面貼牆冇位，就揀側後方，免得變咗由頭頂望落去
       for (var i = 0; i < A.length; i++) { px = st.x - Math.sin(st.h + A[i]) * 1.6; pz = st.z - Math.cos(st.h + A[i]) * 1.6; if (px > b.x0 + 0.25 && px < b.x1 - 0.25 && pz > b.z0 + 0.25 && pz < b.z1 - 0.25) break; }
     } else { v.subVectors(camera.position, controls.target).setY(0); if (v.lengthSq() < 1e-4) v.set(0, 0, 1); v.setLength(1.8); px = st.x + v.x; pz = st.z + v.z; }   // 停低：由而家個方向拉近
     v.set(lim(px, b.x0, b.x1), py, lim(pz, b.z0, b.z1)); camera.position.lerp(v, 1 - Math.exp(-dt * (far ? 3 : 1.8)));
+    unblock(camera, controls);
   }
+  var rc = new THREE.Raycaster();
+  var dir = new THREE.Vector3();
+  function topY(o) { if (o.userData.top == null) { o.geometry.computeBoundingBox(); o.userData.top = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld).max.y; } return o.userData.top; }
+  function clearPos(from, p, low) {   // 由貓望去 p，中間有實心嘢（傢俬、牆）就將 p 移近；玻璃同隻貓自己唔計；low：矮過呢個高度嘅嘢（枱凳）都唔計
+    dir.subVectors(p, from); var len = dir.length(); if (len < 0.05) return p;
+    rc.set(from, dir.multiplyScalar(1 / len)); rc.far = len;
+    var hit = rc.intersectObjects(scene.children, true).filter(function (h) { var m = h.object.material; return h.object.visible && !h.object.userData.cat && h.object.isMesh && !(m && m.transparent && m.opacity < 0.6) && !(low && topY(h.object) < low); })[0];
+    if (hit) p.copy(from).addScaledVector(dir, Math.max(0.3, hit.distance - 0.15));
+    return p;
+  }
+  function unblock(camera, controls) { clearPos(controls.target, camera.position); }
   function place(camera, w, h, fixed) {
     if (!sayEl || sayEl.hidden) return;
     var x = w / 2, y = 12;
