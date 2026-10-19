@@ -410,7 +410,7 @@ function buildNav(){
   var R=[],U=[];   // R：障礙 [中心x,中心z,半闊,半深,轉角]；凳只計支柱，貓可以喺凳底行過。U：跳得上去嘅面，多一個面高
   function rect(x0,z0,x1,z1){R.push([(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2,0]);}
   function top(x0,z0,x1,z1,h){U.push([(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2,0,h]);}
-  var TOP={table:0.77,counter:0.9,sink:0.9,bench:0.47,bar:1.05};   // 燒製枱、高溫爐熱，展台、展櫃有作品，都唔畀跳
+  var TOP={table:0.77,counter:0.9,sink:0.9,bench:0.47,bar:1.05,cart:0.9,shelf:1.53,rack:1.58,case:1.96};   // 面高；1.2 m 以上嘅（架、展櫃頂）要由矮嘅傢俬接力跳上去。燒製枱、高溫爐熱，展台有作品，都唔畀跳
   PLANS[cur].forEach(function(i){
     if(i.k==='glass'||i.k==='screen')rect(i.x-0.05,i.z0,i.x+0.05,i.z1);
     else if(i.k==='ped'||i.k==='stool'||i.k==='ext'){var s=i.k==='stool'?0.04:i.k==='ext'?0.08:i.big?0.24:0.17;rect(i.x-s,i.z-s,i.x+s,i.z+s);if(i.k==='stool')top(i.x-0.12,i.z-0.12,i.x+0.12,i.z+0.12,0.47);}

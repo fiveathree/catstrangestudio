@@ -319,7 +319,7 @@ function catStart() {   // 有門就由門口入少少開始，冇就由中間
   for (var i = 0; i < S.items.length; i++) { var it = S.items[i]; if (it.t === 'door' && it.n) return [it.x + it.n[0] * 0.7, it.y + it.n[1] * 0.7]; }
   var b = bounds(); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
 }
-function navCat() {   // 企喺地面（離地 < 0.4 m）嘅傢俬同自己畫嘅牆當障礙；矩形外牆由範圍邊界處理。面高 1.2 m 以下嘅傢俬（爐台除外）貓會跳上去
+function navCat() {   // 企喺地面（離地 < 0.4 m）嘅傢俬同自己畫嘅牆當障礙；矩形外牆由範圍邊界處理。面高 2.2 m 以下嘅傢俬（爐台除外）貓會跳上去，1.2 m 以上要由矮嘅接力
   if (!cat) return; var b = bounds(), R = [], U = [], sg = [];
   S.items.forEach(function (it) { var c = CAT[it.t]; if (c.g !== 'furn' || (it.z || 0) >= 0.4) return; var p = center(it), r = [p.x, p.y, it.w / 2, it.d / 2, -it.rot * Math.PI / 180]; R.push(r); if (it.t !== 'stove') U.push(r.concat((it.z || 0) + it.h)); });
   S.walls.forEach(function (w) { sg.push([w.x1, w.y1, w.x2, w.y2]); });

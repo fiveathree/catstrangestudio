@@ -30,10 +30,10 @@ var POSE = {
   crouch:  pose({ drop: -0.05, pitch: 0.12, legF: 0.35, legH: -0.55, headP: -0.12 }),
   air:     pose({ pitch: -0.15, legF: -0.9, legH: 0.9, tailUp: -0.6 })
 };
-/* 停低之後做咩：[動作, 比重, 最短秒, 最長秒]；perch = 搵件傢俬跳上去，hop = 原地跳 */
+/* 停低之後做咩：[動作, 比重, 最短秒, 最長秒]；perch = 搵件傢俬跳上去，hop = 原地跳，run = 忽然跑一段 */
 var IDLE = {
-  wander: [['look', 4, 2, 5], ['sit', 3, 4, 9], ['groom', 3, 5, 9], ['loaf', 2, 6, 12], ['sleep', 1.5, 10, 18], ['stretch', 1.2, 2.6, 2.6], ['yawn', 1, 2.2, 2.2], ['perch', 3]],
-  zoom:   [['look', 5, 0.15, 0.6], ['hop', 3], ['perch', 2]]
+  wander: [['look', 4, 2, 5], ['sit', 3, 4, 9], ['groom', 3, 5, 9], ['loaf', 2, 6, 12], ['sleep', 2.5, 12, 25], ['stretch', 1.2, 2.6, 2.6], ['yawn', 1, 2.2, 2.2], ['perch', 3.5], ['run', 3], ['hop', 0.8]],
+  zoom:   [['look', 3, 0.15, 0.6], ['hop', 3], ['perch', 5]]
 };
 var ONPERCH = [['look', 3, 2, 5], ['sit', 3, 4, 9], ['groom', 3, 5, 9], ['loaf', 2, 6, 12], ['sleep', 2, 10, 18]];
 var CSS = '.catsay{position:absolute;left:0;top:0;z-index:5;transform:translate(-50%,calc(-100% - 10px));width:max-content;max-width:min(280px,82%);padding:8px 12px;border-radius:12px;background:#FFF8EC;color:#2A1D10;font-size:13px;line-height:1.6;box-shadow:0 4px 16px rgba(0,0,0,.35);pointer-events:none;white-space:normal}' +
@@ -47,7 +47,7 @@ function create(THREE, scene, box) {
   if (box && !document.getElementById('tabbycat-css')) { var stl = document.createElement('style'); stl.id = 'tabbycat-css'; stl.textContent = CSS; document.head.appendChild(stl); }
   var CR = 0.18, G = 0.1, GX = 1, GZ = 1, X0 = 0, Z0 = 0, free = new Uint8Array(1), perches = [];
   /* h：面向角，前方 = (sin h, cos h)；y：企喺幾高（地面 0，跳咗上傢俬就係面高）；fy：跳緊時嘅高度 */
-  var st = { x: 0, z: 0, h: PI / 2, y: 0, fy: null, path: [], act: null, turn: null, plan: null, perch: null, launch: null, perchLeft: 0, ph: 0, amp: 0, t: 0, stuck: 0 };
+  var st = { x: 0, z: 0, h: PI / 2, y: 0, fy: null, path: [], act: null, turn: null, plan: null, perch: null, perchLeft: 0, climb: 0, descend: false, run: false, ph: 0, amp: 0, t: 0, stuck: 0 };
   var mode = 'wander', M = MODES.wander, stops = [], stopI = -1, onEnd = null, cam = null, sayEl = null, sayHide = 0;
   var P = pose({}), v = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
   if (box) { sayEl = document.createElement('div'); sayEl.className = 'catsay'; sayEl.hidden = true; sayEl.setAttribute('aria-live', 'polite'); box.appendChild(sayEl); }
@@ -94,7 +94,7 @@ function create(THREE, scene, box) {
       for (n = 0; ok && n < segs.length; n++) { var s = segs[n], ux = s[2] - s[0], uz = s[3] - s[1], L2 = ux * ux + uz * uz, t = L2 ? Math.max(0, Math.min(1, ((x - s[0]) * ux + (z - s[1]) * uz) / L2)) : 0; if (Math.hypot(x - s[0] - ux * t, z - s[1] - uz * t) < pad) ok = false; }
       free[c] = ok ? 1 : 0;
     }
-    perches = (o.perches || []).filter(function (p) { return p[5] > 0.2 && p[5] <= 1.2; }).map(function (p) { return { p: p, launch: nearestFree(p[0], p[1]) }; });   // 太矮唔使跳，太高跳唔上
+    perches = (o.perches || []).filter(function (p) { return p[5] > 0.2 && p[5] <= 2.2; }).map(function (p) { return { p: p, launch: nearestFree(p[0], p[1]) }; });   // 太矮唔使跳；1.2 m 以上要由其他傢俬接力跳上去
     var up = st.y > 0.01 || (st.act && st.act.k === 'jump');
     if (up) { st.act = null; st.perch = null; st.y = 0; st.fy = null; }   // 喺傢俬上面時改咗佈局：即刻落返地
     var inside = st.placed && st.x >= o.x0 && st.x <= o.x1 && st.z >= o.z0 && st.z <= o.z1, sx = (o.x0 + o.x1) / 2, sz = (o.z0 + o.z1) / 2, g = -2;
@@ -156,34 +156,52 @@ function create(THREE, scene, box) {
     return [p[0] + lx * co + lz * si, p[5], p[1] - lx * si + lz * co];
   }
   function jump(to, o) {
-    var dist = Math.hypot(to[0] - st.x, to[2] - st.z), T = 0.38 + dist * 0.25 + Math.abs(to[1] - st.y) * 0.15;
-    var a = { from: [st.x, st.y, st.z], to: to, hgt: 0.16 + Math.max(0, to[1] - st.y) * 0.25 + (dist < 0.05 ? 0.08 : 0), c: 0.28, T: T, l: 0.2 };
+    var dist = Math.hypot(to[0] - st.x, to[2] - st.z), dy = to[1] - st.y, T = 0.38 + dist * 0.25 + Math.abs(dy) * 0.15;
+    var a = { from: [st.x, st.y, st.z], to: to, hgt: 0.16 + Math.max(0, dy) * 0.25 + (dist < 0.05 ? (mode === 'zoom' ? 0.3 : 0.08) : 0), c: dy > 0.6 ? 0.4 : 0.28, T: T, l: 0.2 };   // 跳得高就蹲耐少少儲力
     if (dist > 0.05) st.turn = Math.atan2(to[0] - st.x, to[2] - st.z);
     for (var q in o) a[q] = o[q];
     startAct('jump', a.c + a.T + a.l, a);
   }
-  function jumpUp(pc) { st.launch = [st.x, st.z]; jump(perchSpot(pc), { up: true, perch: pc }); }
-  function jumpDown() {
-    var l = st.launch, g = l ? nearestFree(l[0], l[1]) : nearestFree(st.x, st.z);
-    jump(g >= 0 ? [cX(g), 0, cZ(g)] : [st.x, 0, st.z], { up: false });
+  function jumpTo(pc, down) { jump(perchSpot(pc), { perch: pc, down: !!down }); }
+  function reachable(pc, up) {   // 由而家企嘅傢俬跳去另一件：水平 1.6 m 內；向上最多 1.2 m，向下最多 1.4 m
+    if (pc === st.perch) return false;
+    var s = perchSpot(pc), dy = pc.p[5] - st.y;
+    return Math.hypot(s[0] - st.x, s[2] - st.z) <= 1.6 && (up ? dy > 0.15 && dy <= 1.2 : dy < -0.3 && dy >= -1.4);
   }
-  function findPerch() {   // 行得到、又唔太遠嘅傢俬
-    var s = cellOf(st.x, st.z), r = bfs(s, false), ok = perches.filter(function (pc) { return pc.launch >= 0 && r.dist[pc.launch] >= 0 && r.dist[pc.launch] * G <= 4; });
+  function climbFrom() { var ok = perches.filter(function (pc) { return reachable(pc, true); }); return ok.length ? ok[Math.floor(Math.random() * ok.length)] : null; }
+  function goDown() {   // 1.6 m 以下直接跳落地；再高就先跳去矮啲嘅傢俬，一級級落
+    st.climb = 0;
+    if (st.y > 1.6) { var ok = perches.filter(function (pc) { return reachable(pc, false); }); if (ok.length) { jumpTo(ok[Math.floor(Math.random() * ok.length)], true); return; } }
+    var g = nearestFree(st.x, st.z);
+    jump(g >= 0 ? [cX(g), 0, cZ(g)] : [st.x, 0, st.z], {});
+  }
+  function findPerch() {   // 由地面跳得上（1.2 m 以下）、行得到、又唔太遠嘅傢俬
+    var s = cellOf(st.x, st.z), r = bfs(s, false), lim = mode === 'zoom' ? 7 : 4;
+    var ok = perches.filter(function (pc) { return pc.p[5] <= 1.2 && pc.launch >= 0 && r.dist[pc.launch] >= 0 && r.dist[pc.launch] * G <= lim; });
     return ok.length ? ok[Math.floor(Math.random() * ok.length)] : null;
   }
   function idle(list) {
     var a = pick(list), k = a[0];
     if (k === 'perch') {
       var pc = findPerch();
-      if (pc) { if (cellOf(st.x, st.z) === pc.launch) { jumpUp(pc); return; } if (goTo(pc.launch)) { st.plan = pc; return; } }
+      if (pc) { if (cellOf(st.x, st.z) === pc.launch) { jumpTo(pc); return; } if (goTo(pc.launch)) { st.plan = pc; return; } }
       k = 'look'; a = ['look', 1, 1, 3];
     }
-    if (k === 'hop') { jump([st.x, 0, st.z], { up: false, hop: true }); return; }
+    if (k === 'run') { st.run = true; if (randomTrip()) return; st.run = false; k = 'look'; a = ['look', 1, 1, 3]; }   // 忽然跑一段
+    if (k === 'hop') { jump([st.x, st.y, st.z], { hop: true }); return; }
     if (k === 'look') st.turn = faceFreeTurn();
     startAct(k, rand(a[2], a[3]), k === 'sleep' ? { chain: Math.random() < 0.7 ? ['stretch', 'yawn'] : ['stretch'] } : null);   // 瞓醒伸個懶腰
   }
+  function onPerch() {   // 喺傢俬上面：有更高嘅就可能再跳上去（越跳越高），之後做下嘢，最後一級級落返地
+    if (mode === 'tour' || st.descend) { goDown(); return; }
+    var q = climbFrom();
+    if (q && st.climb < 4 && Math.random() < (mode === 'zoom' ? 0.85 : 0.55)) { st.climb++; jumpTo(q); return; }
+    if (st.perchLeft-- > 0) { if (mode === 'zoom') startAct('look', 0.3); else idle(ONPERCH); return; }
+    goDown();
+  }
   function arrive() {
-    if (st.plan) { var pc = st.plan; st.plan = null; jumpUp(pc); return; }
+    st.run = false;
+    if (st.plan) { var pc = st.plan; st.plan = null; jumpTo(pc); return; }
     if (mode === 'tour' && stopI >= 0 && stopI < stops.length) {
       var s = stops[stopI]; say(s.say);
       st.turn = cam ? Math.atan2(cam.position.x - st.x, cam.position.z - st.z) : null;   // 好似地產經紀咁坐低、望住客講
@@ -193,6 +211,7 @@ function create(THREE, scene, box) {
     idle(IDLE[mode] || IDLE.wander);
   }
   function next() {
+    st.run = false;
     if (mode === 'tour') {
       stopI++;
       if (stopI >= stops.length) { var cb = onEnd; onEnd = null; setMode('wander'); if (cb) cb(); return; }
@@ -207,29 +226,25 @@ function create(THREE, scene, box) {
     if (a.chain && a.chain.length) { var n = a.chain.shift(); startAct(n, n === 'stretch' ? 2.6 : 2.2, { chain: a.chain }); return; }
     if (a.k === 'jump') {
       st.fy = null; st.x = a.to[0]; st.z = a.to[2]; st.y = a.to[1];
-      if (a.up) { st.perch = a.perch; st.perchLeft = mode === 'zoom' ? 1 : 1 + (Math.random() < 0.5 ? 1 : 0); }
-      else { st.perch = null; st.y = 0; next(); return; }
+      if (a.perch) { var fromGround = !st.perch; st.perch = a.perch; st.descend = !!a.down; if (fromGround) st.climb = 0; st.perchLeft = mode === 'zoom' ? 0 : 1 + (Math.random() < 0.5 ? 1 : 0); }
+      else if (!a.hop || st.y < 0.01) { st.perch = null; st.y = 0; st.descend = false; next(); return; }
     }
-    if (st.perch) {
-      if (mode !== 'tour' && st.perchLeft-- > 0) { if (mode === 'zoom') startAct('look', 0.3); else idle(ONPERCH); }
-      else jumpDown();
-      return;
-    }
+    if (st.perch) { onPerch(); return; }
     next();
   }
   function setMode(m) {
-    if (!MODES[m]) return; mode = m; M = MODES[m]; st.path = []; st.plan = null; st.turn = null;
+    if (!MODES[m]) return; mode = m; M = MODES[m]; st.path = []; st.plan = null; st.turn = null; st.run = false;
     if (st.act && st.act.k === 'sleep') say('');
     if (m !== 'tour') { stops = []; stopI = -1; onEnd = null; say(''); }
     if (st.act && st.act.k === 'jump') return;   // 跳緊就等佢落地先，落地之後會照新模式做
     st.act = null;
-    if (st.y > 0.01) { st.perchLeft = 0; jumpDown(); } else startAct('look', 0.05);
+    if (st.y > 0.01) { st.perchLeft = 0; goDown(); } else startAct('look', 0.05);
   }
   function startTour(list, cb) { setMode('tour'); stops = list; stopI = -1; onEnd = cb || null; }
 
   /* ---------- 每格更新 ---------- */
   function update(dt, camera) {
-    var sp = 0, turn = 0, a = st.act, tgt = POSE.stand, sweep = 0, tongueOn = false, rate = 5;
+    var Mv = st.run ? MODES.zoom : M, sp = 0, turn = 0, a = st.act, tgt = POSE.stand, sweep = 0, tongueOn = false, rate = 5;
     st.t += dt; cam = camera;
     if (sayHide && st.t > sayHide) say('');
     if (a) {
@@ -247,26 +262,26 @@ function create(THREE, scene, box) {
       if (a.t >= a.dur) endAct();
     } else if (st.path.length) {
       var p = st.path[0], dx = p[0] - st.x, dz = p[1] - st.z, d = Math.hypot(dx, dz);
-      if (d < Math.max(0.04, M.sp * dt)) { st.x = p[0]; st.z = p[1]; st.path.shift(); st.stuck = 0; if (!st.path.length) arrive(); }
+      if (d < Math.max(0.04, Mv.sp * dt)) { st.x = p[0]; st.z = p[1]; st.path.shift(); st.stuck = 0; if (!st.path.length) arrive(); }
       else {
         turn = angDiff(Math.atan2(dx, dz), st.h); var cs = Math.cos(turn);
-        sp = Math.abs(turn) > 0.7 ? 0 : M.sp * cs * cs;   // 要轉大彎就先原地轉
+        sp = Math.abs(turn) > 0.7 ? 0 : Mv.sp * cs * cs;   // 要轉大彎就先原地轉
         var step = Math.min(sp * dt, d);
         if (step > 0) { var nx = st.x + dx / d * step, nz = st.z + dz / d * step; if (free[cellOf(nx, nz)] || !free[cellOf(st.x, st.z)]) { st.x = nx; st.z = nz; st.stuck = 0; } else st.stuck += dt; }   // 一定沿住路線行；本身企咗喺障礙邊就准行出嚟
         else if (Math.abs(turn) < 0.05) st.stuck += dt;
         if (st.stuck > 0.6) { st.path = []; st.plan = null; st.stuck = 0; var g0 = nearestFree(st.x, st.z); if (g0 >= 0) { st.x = cX(g0); st.z = cZ(g0); } if (mode === 'tour' && stopI >= 0) stopI--; next(); }   // 卡住就重新搵路
       }
     } else next();
-    var tr = Math.max(-(a && a.k === 'jump' ? 9 : M.turn) * dt, Math.min((a && a.k === 'jump' ? 9 : M.turn) * dt, turn)); st.h += tr;
+    var tr = Math.max(-(a && a.k === 'jump' ? 9 : Mv.turn) * dt, Math.min((a && a.k === 'jump' ? 9 : Mv.turn) * dt, turn)); st.h += tr;
     var moving = sp > 0.02 || (Math.abs(tr) > 0.002 && !(a && a.k !== 'look'));
-    st.amp += ((moving ? 1 : 0) - st.amp) * Math.min(1, dt * 6); st.ph += sp * dt * M.stride + Math.abs(tr) * 3;
+    st.amp += ((moving ? 1 : 0) - st.amp) * Math.min(1, dt * 6); st.ph += sp * dt * Mv.stride + Math.abs(tr) * 3;
     var k = 1 - Math.exp(-dt * rate); for (var q in BASE) P[q] += (tgt[q] - P[q]) * k;
 
     g3.position.set(st.x, 0, st.z); g3.rotation.y = st.h;
-    lift.position.y = (st.fy !== null ? st.fy : st.y) + Math.abs(Math.sin(st.ph)) * M.bob * st.amp;
+    lift.position.y = (st.fy !== null ? st.fy : st.y) + Math.abs(Math.sin(st.ph)) * Mv.bob * st.amp;
     torso.position.y = 0.17 + P.drop; torso.rotation.set(P.pitch, 0, P.roll);
-    var sw = mode === 'zoom' ? 0.8 : 0.55;
-    legs.forEach(function (l, i) { l.rotation.x = (i < 2 ? P.legF : P.legH) - (i === 0 ? 1.9 * P.paw : 0) + Math.sin(st.ph + M.legs[i]) * sw * st.amp; });
+    var sw = Mv === MODES.zoom ? 0.8 : 0.55;
+    legs.forEach(function (l, i) { l.rotation.x = (i < 2 ? P.legF : P.legH) - (i === 0 ? 1.9 * P.paw : 0) + Math.sin(st.ph + Mv.legs[i]) * sw * st.amp; });
     var asleep = a && a.k === 'sleep';
     tailRoot.rotation.x = P.tailUp;
     tail.forEach(function (s, n) { s.rotation.z = Math.sin(st.t * (moving ? 3 : asleep ? 0.6 : 1.4) - n * 0.6) * (asleep ? 0.03 : 0.12) + P.curl * 0.32; });
@@ -300,14 +315,14 @@ function create(THREE, scene, box) {
       camera.position.lerp(v, 1 - Math.exp(-dt * 6)); return;
     }
     var walking = st.path.length > 0 && !st.act, far = camera.position.distanceTo(controls.target) > 2.6;
-    if (hold || !(walking || far)) { unblock(camera, controls); return; }
+    if (hold || !(walking || far)) { unblock(camera, controls, dt); return; }
     var px, pz, py = Math.min(lift.position.y + 1.0, b.h - 0.2), lim = function (x, lo, hi) { return Math.max(lo + 0.25, Math.min(hi - 0.25, x)); };
     if (walking) {
       var A = [0, 0.5, -0.5, 1, -1, 1.5, -1.5];   // 正後面貼牆冇位，就揀側後方，免得變咗由頭頂望落去
       for (var i = 0; i < A.length; i++) { px = st.x - Math.sin(st.h + A[i]) * 1.6; pz = st.z - Math.cos(st.h + A[i]) * 1.6; if (px > b.x0 + 0.25 && px < b.x1 - 0.25 && pz > b.z0 + 0.25 && pz < b.z1 - 0.25) break; }
     } else { v.subVectors(camera.position, controls.target).setY(0); if (v.lengthSq() < 1e-4) v.set(0, 0, 1); v.setLength(1.8); px = st.x + v.x; pz = st.z + v.z; }   // 停低：由而家個方向拉近
     v.set(lim(px, b.x0, b.x1), py, lim(pz, b.z0, b.z1)); camera.position.lerp(v, 1 - Math.exp(-dt * (far ? 3 : 1.8)));
-    unblock(camera, controls);
+    unblock(camera, controls, dt);
   }
   var rc = new THREE.Raycaster();
   var dir = new THREE.Vector3();
@@ -319,7 +334,14 @@ function create(THREE, scene, box) {
     if (hit) p.copy(from).addScaledVector(dir, Math.max(0.3, hit.distance - 0.15));
     return p;
   }
-  function unblock(camera, controls) { clearPos(controls.target, camera.position); }
+  var best = new THREE.Vector3(), cand = new THREE.Vector3();
+  function unblock(camera, controls, dt) {
+    var t = controls.target; clearPos(t, camera.position);
+    if (camera.position.distanceTo(t) >= 0.8 || !dt) return;
+    var bd = -1;   // 被擋到太近：喺隻貓周圍搵個最開揚嘅角度，慢慢移過去
+    for (var i = 0; i < 8; i++) { var ang = i * PI / 4; cand.set(t.x + Math.sin(ang) * 1.6, t.y + 0.9, t.z + Math.cos(ang) * 1.6); clearPos(t, cand); var d = cand.distanceTo(t); if (d > bd) { bd = d; best.copy(cand); } }
+    camera.position.lerp(best, 1 - Math.exp(-dt * 4));
+  }
   function place(camera, w, h, fixed) {
     if (!sayEl || sayEl.hidden) return;
     var x = w / 2, y = 12;
