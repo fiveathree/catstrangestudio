@@ -1,6 +1,6 @@
 # 交接筆記（畀之後接手嘅對話）
 
-> **狀態：2026-10-19 恢復。** 用戶要求繼續做，第一個改動係加入會行嘅狸花貓同「貓咪視角」。
+> **狀態：2026-10-19 恢復。** 已做：會行嘅狸花貓、貓咪視角、favicon、貓三個模式（帶參觀／周圍行／暴衝）、規劃工具嘅「上載・生成 3D」（唔用 AI）。
 
 呢個 repo 有兩樣嘢：一個宇宙玻璃 Studio 嘅 3D 模型頁，同一個裝修 3D 規劃工具。全部係靜態檔案，冇後端、冇 build 步驟。
 
@@ -21,6 +21,7 @@
 index.html            Studio 3D 模型頁（單一檔案，CSS 同 JS 都喺入面）
 assets/plan.png       原本平面圖嘅裁切圖（只有房間部分）
 assets/favicon.svg    狸花貓頭 favicon（兩個頁面共用）
+assets/cat.js         狸花貓模組（兩個頁面共用）：模型、搵路、三個模式、對話框、跟拍同貓眼鏡頭
 planner/index.html    裝修規劃工具
 planner/style.css
 planner/app.js
@@ -38,8 +39,9 @@ planner/vendor/       three.js r128、OrbitControls、pdf.js（第三方，唔�
 - 同步邏輯喺 `syncPlan()`（3D 鏡頭 → 平面圖標記同分區）同 `planClick()`／`flyZone()`（平面圖 → 3D 鏡頭）。
 - `#plantog` 收埋／展開平面圖區，狀態存喺 `localStorage`。
 - 原圖比例：110 dpi 下 1 px = 8.6 mm，室內左上角喺 (152, 442) px。`assets/plan.png` 係用呢個比例擺位，換圖要重新計。
-- 狸花貓：`catG` 擺喺 `scene`（唔喺 `world`），所以換風格唔會重砌，`build()` 最尾只會叫 `buildNav()` 重算可以行嘅格。地面每 0.1 m 一格，傢俬、柱同牆邊向外加 `CR=0.18` 當行唔到；凳只計支柱，所以貓可以喺凳底行過。`newTrip()` 用 BFS 隨機揀一個最少 1.5 m 遠嘅點，再拉直成幾段直線；`updateCat(dt)` 負責行、轉身、停低，同埋四肢、尾巴同頭嘅動畫。虎紋係用 canvas 即場畫嘅貼圖。
-- 貓咪視角：`#v-cat` 掣（冇 `data-v`，唔喺 `VIEWS` 入面）。`setCatView(on)` 會停用 OrbitControls、收埋隻貓、FOV 轉 70；`frame()` 入面改用 `catCam()` 將鏡頭放喺貓眼。`go()` 同 `fly()` 一開始就會退出貓咪視角，再㩒一次個掣就飛返入嚟之前嘅位置。
+- 狸花貓：用 `assets/cat.js` 嘅 `TabbyCat.create(THREE, scene, stage)`。隻貓擺喺 `scene`（唔喺 `world`），換風格唔會重砌；`build()` 最尾叫 `buildNav()`，將 `PLANS` 同柱位轉成 `[中心x,中心z,半闊,半深,rotation.y]` 交畀 `cat.setNav()`。凳只計支柱，貓可以喺凳底行過。
+- 貓模式掣 `[data-cm]`：`tour` 帶參觀（`tourStops()` 由入口開始，逐個 `ZONES` 分區介紹，講法似日本地產經紀；行完自動轉返 `wander`）、`wander` 周圍行、`zoom` 暴衝。帶參觀時 `catFollow=true`，鏡頭跟喺貓後面；揀任何視角、㩒平面圖或者自己拖鏡頭就停跟（貓照樣繼續帶）。換風格會由頭帶過。
+- 貓咪視角：`#v-cat` 掣（冇 `data-v`，唔喺 `VIEWS` 入面）。`setCatView(on)` 會停用 OrbitControls、收埋隻貓、FOV 轉 70；`frame()` 入面用 `cat.eyeCam()`。`go()` 同 `fly()` 一開始就會退出貓咪視角同停跟拍，再㩒一次個掣就飛返入嚟之前嘅位置。
 
 ### 裝修規劃工具（`planner/`）
 
@@ -48,6 +50,12 @@ planner/vendor/       three.js r128、OrbitControls、pdf.js（第三方，唔�
 - `CAT` 係物件目錄（水電位、門窗、電器傢俬）；`MAT` 係質感，用 canvas 即場畫貼圖。
 - 貼牆嘅物件用 `snapWall()` 吸附，會記低牆嘅法線 `n` 同角度 `rot`。
 - 底圖支援圖片同 PDF（PDF 用 `vendor/pdf.min.mjs` 動態載入第一頁）。
+- 「上載・生成 3D」區（`#gen`，唔用 AI，全部喺瀏覽器做）：
+  - 傢俬相：`CAT.photo`（`own:1`，唔喺物件列出）。相縮到 384 px JPEG 存喺 `it.img`，平均色存 `it.col`，連結經 `safeLink()` 存 `it.link`（只收 http/https，淘寶等網站讀唔到，只係記低）。3D 用 `photoBox()`：前後兩面貼相，其餘用平均色；貼圖用 `ptex` 快取。可以 Ctrl+V 貼截圖。
+  - 風格：`STYLES` 四個預設（同 Studio 頁 A–D 對應）會改 `S.mats` 同 `S.style.furn`（`TINT` 入面嘅桌、櫃、床、沙發、方塊會用呢隻色）。上載風格相會用 `palette()` 抽色：最光做牆同天花，最深做地板，第三隻做傢俬；`S.mats` 變 `custom`，`matDef()` 由 `S.style.cols` 生成質感。
+  - 描述：`S.brief`（最多 1000 字），只存喺本機，貓帶睇時會讀出嚟。
+  - 「生成 3D・貓帶睇」：重建 3D，然後 `startTour()`：開場（面積、坪數、樓底、風格）→ 讀描述 → 由近至遠最多 8 件傢俬 → 水電位統計 → 道別。
+- 狸花貓同三個模式（3D 工具列 `[data-cm]`）同 Studio 頁一樣用 `assets/cat.js`；`navCat()` 喺每次 `build3d()` 重算，離地 < 0.4 m 嘅傢俬同自己畫嘅牆當障礙，由門口（冇門就由中間）開始。
 
 ## 部署
 
@@ -60,17 +68,17 @@ planner/vendor/       three.js r128、OrbitControls、pdf.js（第三方，唔�
 
 冇自動測試，每次改完都要用無頭瀏覽器開一次頁面睇真。
 
-1. 語法檢查：`node --check planner/app.js`；`index.html` 入面最後一個 `<script>` 抽出嚟再 `node --check`。
+1. 語法檢查：`node --check planner/app.js`、`node --check assets/cat.js`；`index.html` 入面最後一個 `<script>` 抽出嚟再 `node --check`。
 2. 喺 repo 根目錄開本地伺服器：`python3 -m http.server 8766`。
 3. 用 Playwright（Chromium，加 `--use-gl=swiftshader --enable-unsafe-swiftshader`）開頁面，截圖，並且收集 `pageerror` 同 console error，要係零。
    - 測 `index.html` 嗰陣，沙盒連唔到 CDN，要用 `page.route` 將 `three.min.js` 同 `OrbitControls.js` 指去 `planner/vendor/` 嘅本地檔案，Google Fonts 就回一個空嘅 CSS。
 4. 最少試呢啲：
-   - Studio 頁：四種風格逐個切換；㩒分區條同平面圖；收埋再展開平面圖區；400 px 闊度冇橫向捲動。
-   - 規劃工具：加一件物件、拖動、畫一段牆、換地板同牆身、上傳一個 PDF 做底圖；400 px 闊度冇橫向捲動。
+   - Studio 頁：四種風格逐個切換；㩒分區條同平面圖；收埋再展開平面圖區；貓三個模式同貓咪視角；400 px 闊度冇橫向捲動。
+   - 規劃工具：加一件物件、拖動、畫一段牆、換地板同牆身、上傳一個 PDF 做底圖；加一件相片傢俬、揀風格、上載風格相、「生成 3D・貓帶睇」；400 px 闊度冇橫向捲動。
 5. 親眼睇截圖，唔好淨係睇有冇報錯。
 6. 回覆用戶嗰陣，講清楚邊樣試過、邊樣冇試。
 
-> 2026-10 用戶部 Windows 機冇 Node、Python 同 Playwright，上面第 1 至 3 步行唔到。替代做法：用 Claude desktop app 內置嘅瀏覽器直接開 `index.html`（會變成 `data:` 快照，CDN 載入正常，但係 `assets/plan.png` 呢類相對路徑載入唔到）。用 `javascript_tool` 撳掣同讀狀態，用 `read_console_messages` 睇錯誤，用 `resize_window` 試 400 px 闊度。如果要讀閉包入面嘅變數，可以臨時加一行 `window.__dbg=…`，測完一定要刪。
+> 用戶部 Windows 機嘅做法（2026-10）：冇 Python 同 Playwright；Node 有，但係唔喺 PATH，要用 `"/c/Program Files/nodejs/node.exe" --check …`。用 Claude desktop app 內置瀏覽器測試：用 `file://` 開會變成 `data:` 快照，相對路徑（`assets/cat.js`、`assets/plan.png`）全部載入唔到，所以一定要起本地伺服器。可以用 PowerShell 嘅 `HttpListener` 寫一個細靜態伺服器，再喺 app 共用嘅 `my-first-website/.claude/launch.json` 加設定，用 `preview_start` 開。內置瀏覽器 pane 收埋嗰陣，`requestAnimationFrame` 唔會行，隻貓會企喺度唔郁；測試伺服器可以喺網址有 `?rafshim` 時，喺 `<head>` 注入一句用 `setTimeout` 代替 rAF 嘅 script（只限測試伺服器，唔好寫入 repo）。`window.__planner.state()` 可以讀規劃工具嘅狀態。
 
 ## 私隱同安全規則
 
@@ -88,7 +96,9 @@ planner/vendor/       three.js r128、OrbitControls、pdf.js（第三方，唔�
 - 用戶揀咗先做「底圖自己描牆」；AI 自動識別牆身係之後可能做嘅第二階段。
 - 用戶未揀定用邊種風格，亦未俾現場相。揀定之後要深化嗰一個方案。
 - Claude 入面有一個舊版 3D 頁同一個只做咗 A 方案嘅平面設計稿，冇跟 GitHub 版本更新。
-- 狸花貓同貓咪視角只喺內置瀏覽器（Chromium）試過，冇喺真手機試過；外形同步態係第一版，用戶睇完可能會要求調整。
+- 狸花貓、三個模式同貓咪視角只喺內置瀏覽器（Chromium）試過，冇喺真手機試過；外形、步態同帶參觀講法都係第一版，用戶睇完可能會要求調整。
+- 「上載・生成 3D」只用程式生成嘅相試過：未用過真嘅淘寶／momo／蝦皮截圖，亦未試過真正用鍵盤 Ctrl+V 貼相（只試咗上載檔案）。
+- 用戶揀咗「唔用 AI」做 Gen 3D。如果之後要 AI 睇相或者讀描述自動排位，要另外開 Cloudflare Worker 放金鑰（見私隱同安全規則）。
 
 ## 已知問題同假設
 
@@ -99,5 +109,8 @@ planner/vendor/       three.js r128、OrbitControls、pdf.js（第三方，唔�
 - 狸花貓喺轉角原地轉身嗰陣，個頭（約 0.3 m 長）有機會輕輕伸入傢俬邊；停低轉身之前會先檢查個頭嗰邊有冇空位，但係行緊路轉彎嗰陣冇檢查。開咗「減少動態效果」隻貓都照行。
 - 規劃工具嘅門窗只係貼喺牆面嘅板，冇喺牆度開窿。
 - 規劃工具取消「矩形外牆」之後，地板係用所有牆嘅外框矩形，唔係跟牆嘅實際形狀。
-- 規劃工具嘅設計只存喺瀏覽器，帶大底圖嗰陣有機會超出儲存上限，到時會自動唔存底圖。
+- 規劃工具嘅設計只存喺瀏覽器，帶大底圖或者好多傢俬相嗰陣有機會超出儲存上限：會先唔存底圖，再唔夠就連傢俬相都唔存（重新整理之後相會唔見，要用「儲存檔案」先保得住）。
+- 上載咗風格相之後，再自己揀地板或牆身質感，「風格」嗰度仍然會顯示「相片風格」。
+- 規劃工具冇矩形外牆、只靠自己畫牆嗰陣，貓係喺牆嘅外框範圍入面行，有機會行咗去牆外面。
+- 帶參觀嘅介紹句係固定模板（分區名、傢俬名、尺寸再加一句讚美），唔係按描述生成。
 - 兩個頁面都只喺無頭 Chromium 試過，未喺 Safari、Firefox 或者真手機試過。PDF 底圖靠 `planner/vendor/pdf.min.mjs`（pdf.js 嘅 legacy 版），喺其他瀏覽器未驗證。

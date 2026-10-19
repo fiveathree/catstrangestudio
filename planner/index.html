@@ -34,6 +34,36 @@
     </div>
   </section>
 
+  <details open id="gen">
+    <summary>上載・生成 3D</summary>
+    <h3>1. 平面圖</h3>
+    <label for="f-bg" class="filebtn">上傳平面圖（圖片或 PDF）</label>
+    <p class="tip">上傳之後，喺下面「平面圖底圖」量比例，再用「畫牆」照住描。</p>
+    <h3>2. 傢俬（淘寶・momo・蝦皮）</h3>
+    <label for="fu-img" class="filebtn">揀傢俬相</label>
+    <input type="file" id="fu-img" accept="image/*" hidden>
+    <img id="fu-prev" alt="傢俬相預覽" hidden>
+    <p class="tip">都可以直接 Ctrl+V 貼上截圖。購物網站唔畀外部程式讀取，所以連結只會記低，尺寸要自己入。</p>
+    <div class="grid2">
+      <label for="fu-name">名稱</label><input id="fu-name" type="text" maxlength="30" placeholder="例如：餐椅">
+      <label for="fu-link">連結</label><input id="fu-link" type="url" placeholder="https://…">
+      <label for="fu-w">闊 (m)</label><input id="fu-w" type="number" min="0.05" max="20" step="0.05" value="0.8">
+      <label for="fu-d">深 (m)</label><input id="fu-d" type="number" min="0.05" max="20" step="0.05" value="0.5">
+      <label for="fu-h">高 (m)</label><input id="fu-h" type="number" min="0.05" max="20" step="0.05" value="0.8">
+    </div>
+    <button id="fu-add">加入傢俬</button>
+    <p class="tip" id="fu-msg" aria-live="polite"></p>
+    <h3>3. 風格</h3>
+    <div class="pal" id="st-pre"></div>
+    <label for="st-img" class="filebtn">上載風格相（抽顏色）</label>
+    <input type="file" id="st-img" accept="image/*" hidden>
+    <div id="st-cur" class="tip"></div>
+    <h3>4. 想點裝修</h3>
+    <textarea id="brief" rows="4" maxlength="1000" aria-label="想點裝修" placeholder="例如：想要暖木色、多啲收納、留個位畀隻貓瞓覺…"></textarea>
+    <p class="tip">只會存喺你部機。貓帶睇嗰陣會讀返出嚟。</p>
+    <button id="b-gen" class="primary">生成 3D・貓帶睇</button>
+  </details>
+
   <details open>
     <summary>空間尺寸</summary>
     <div class="grid2">
@@ -118,6 +148,11 @@
       <button data-view="in">室內</button>
       <button data-view="top">俯視</button>
     </div>
+    <div class="seg" role="group" aria-label="貓模式">
+      <button data-cm="tour" aria-pressed="false">🐈 帶睇</button>
+      <button data-cm="wander" aria-pressed="true">周圍行</button>
+      <button data-cm="zoom" aria-pressed="false">暴衝</button>
+    </div>
     <label class="chk"><input id="o-lab" type="checkbox" checked> 標籤</label>
     <label class="chk"><input id="o-pipe" type="checkbox" checked> 管線</label>
     <label class="chk"><input id="o-ceil" type="checkbox" checked> 天花</label>
@@ -128,6 +163,7 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/OrbitControls.js"></script>
+<script src="../assets/cat.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

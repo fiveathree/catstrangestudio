@@ -29,8 +29,19 @@ var CAT = {
   cabinet:   { n: '櫃', g: 'furn', c: '#A88762', w: 1.0, d: 0.45, h: 2.0, z: 0 },
   bed:       { n: '床', g: 'furn', c: '#D8D2C6', w: 1.5, d: 1.9, h: 0.45, z: 0 },
   sofa:      { n: '沙發', g: 'furn', c: '#8C97A3', w: 1.8, d: 0.85, h: 0.75, z: 0 },
-  box:       { n: '自訂方塊', g: 'furn', c: '#9AA7B4', w: 0.6, d: 0.6, h: 0.9, z: 0 }
+  box:       { n: '自訂方塊', g: 'furn', c: '#9AA7B4', w: 0.6, d: 0.6, h: 0.9, z: 0 },
+  photo:     { n: '自訂傢俬', g: 'furn', c: '#C8B8A0', w: 0.8, d: 0.5, h: 0.8, z: 0, own: 1 }   // 用戶上載相嘅傢俬；唔喺物件列出
 };
+/* 預設風格：同 Studio 頁四個方案一樣；furn 係桌、櫃、床、沙發、方塊嘅顏色 */
+var STYLES = [
+  { id: 'A', n: '暗宇宙', mats: { floor: 'darktile', wall: 'charcoal', ceil: 'dark' }, furn: '#2A3040' },
+  { id: 'B', n: '實驗室', mats: { floor: 'epoxy', wall: 'white', ceil: 'white' }, furn: '#E8ECEF' },
+  { id: 'C', n: '侘寂茶室', mats: { floor: 'oak', wall: 'plaster', ceil: 'same' }, furn: '#B08D62' },
+  { id: 'D', n: '工業工坊', mats: { floor: 'concrete', wall: 'concrete', ceil: 'dark' }, furn: '#3A3C3E' }
+];
+var TINT = { table: 1, cabinet: 1, bed: 1, sofa: 1, box: 1 };
+function isHex(s) { return typeof s === 'string' && /^#[0-9a-f]{6}$/i.test(s); }
+function safeLink(s) { try { var u = new URL(s); return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null; } catch (e) { return null; } }
 
 /* ---------- 質感（用 canvas 畫出來嘅貼圖） ---------- */
 function rng(seed) { var a = 0; for (var i = 0; i < seed.length; i++) a = (a * 31 + seed.charCodeAt(i)) | 0; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -74,12 +85,14 @@ var MAT = {
   ]
 };
 function canv(def) { if (def._c) return def._c; var c = document.createElement('canvas'); c.width = c.height = 256; var x = c.getContext('2d'); x.fillStyle = def.col; x.fillRect(0, 0, 256, 256); if (def.draw) def.draw(x, rng(def.id + def.n)); def._c = c; return c; }
-function matDef(kind, id) { var l = MAT[kind]; for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return l[0]; }
+function matDef(kind, id) {
+  if (id === 'custom' && S && S.style && S.style.cols && isHex(S.style.cols[kind])) return { id: 'custom', n: '相片色', col: S.style.cols[kind], size: 2, draw: function (c, r) { speck(c, r, 1400, 0.06, '0,0,0'); speck(c, r, 900, 0.06, '255,255,255'); } };   // 由風格相抽出嚟嘅顏色
+  var l = MAT[kind]; for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return l[0]; }
 
 /* ---------- 狀態 ---------- */
 var S, sel = null, tool = 'select', hist = [], lastSrc = null, uid = 0;
 function nid() { return 'i' + Date.now().toString(36) + (uid++); }
-function blank() { return { v: 1, room: { w: 6, d: 4, h: 2.8, shell: true }, mats: { floor: 'oak', wall: 'white', ceil: 'white' }, walls: [], items: [], bg: null }; }
+function blank() { return { v: 1, room: { w: 6, d: 4, h: 2.8, shell: true }, mats: { floor: 'oak', wall: 'white', ceil: 'white' }, walls: [], items: [], bg: null, style: null, brief: '' }; }
 function mk(t, x, y, extra) { var c = CAT[t], it = { id: nid(), t: t, x: x, y: y, rot: 0, z: c.z }; if (c.w) { it.w = c.w; it.h = c.h; } if (c.d) it.d = c.d; if (extra) for (var k in extra) it[k] = extra[k]; return it; }
 function sample() {
   var s = blank();
@@ -96,7 +109,7 @@ function snap() { return JSON.stringify(S, function (k, v) { return k === 'src' 
 function push() { hist.push(snap()); if (hist.length > 60) hist.shift(); }
 function undo() { if (!hist.length) return; if (S.bg && S.bg.src) lastSrc = S.bg.src; S = JSON.parse(hist.pop()); if (S.bg) S.bg.src = lastSrc; sel = null; syncInputs(); changed(); }
 var saveT = 0;
-function save() { clearTimeout(saveT); saveT = setTimeout(function () { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { try { localStorage.setItem(KEY, snap()); } catch (e2) { /* 儲存空間用唔到就算 */ } } }, 400); }
+function save() { clearTimeout(saveT); saveT = setTimeout(function () { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { try { localStorage.setItem(KEY, snap()); } catch (e2) { try { localStorage.setItem(KEY, JSON.stringify(S, function (k, v) { return k === 'src' || k === 'img' ? undefined : v; })); } catch (e3) { /* 儲存空間用唔到就算 */ } } } }, 400); }   // 太大就先唔存底圖，再唔存傢俬相
 function load() { try { var j = localStorage.getItem(KEY); if (j) { var o = JSON.parse(j); if (o && o.room && o.items) { if (o.bg && !o.bg.src) o.bg = null; return o; } } } catch (e) { /* 忽略 */ } return null; }
 
 /* ---------- 幾何 ---------- */
@@ -149,7 +162,8 @@ function draw2d() {
     } else if (c.g === 'open') {
       o.push('<g data-id="' + it.id + '" transform="translate(' + it.x + ',' + it.y + ') rotate(' + it.rot + ')"><rect x="' + -it.w / 2 + '" y="-0.1" width="' + it.w + '" height="0.2" fill="' + (it.t === 'door' ? '#C89B6A' : '#BFE3FA') + '" stroke="' + st + '" stroke-width="' + sw + '"/>' + (it.t === 'door' ? '<path d="M' + -it.w / 2 + ' 0.1 A' + it.w + ' ' + it.w + ' 0 0 0 ' + it.w / 2 + ' ' + (0.1 + it.w) + '" fill="none" stroke="var(--dim)" stroke-dasharray="' + 4 * u + '" stroke-width="' + u + '" transform="scale(1,' + doorSide(it) + ')"/>' : '') + '</g>');
     } else {
-      o.push('<g data-id="' + it.id + '" transform="translate(' + p.x + ',' + p.y + ') rotate(' + it.rot + ')"><rect x="' + -it.w / 2 + '" y="' + -it.d / 2 + '" width="' + it.w + '" height="' + it.d + '" fill="' + c.c + '" fill-opacity="0.55" stroke="' + st + '" stroke-width="' + sw + '"/></g>');
+      var ph = it.img ? '<image href="' + esc(it.img) + '" x="' + -it.w / 2 + '" y="' + -it.d / 2 + '" width="' + it.w + '" height="' + it.d + '" preserveAspectRatio="xMidYMid slice" opacity="0.8"/>' : '';
+      o.push('<g data-id="' + it.id + '" transform="translate(' + p.x + ',' + p.y + ') rotate(' + it.rot + ')"><rect x="' + -it.w / 2 + '" y="' + -it.d / 2 + '" width="' + it.w + '" height="' + it.d + '" fill="' + (isHex(it.col) ? it.col : c.c) + '" fill-opacity="0.55" stroke="' + st + '" stroke-width="' + sw + '"/>' + ph + '</g>');
       o.push('<text x="' + p.x + '" y="' + (p.y + fs * 0.35) + '" font-size="' + fs + '" text-anchor="middle" fill="var(--ink)">' + nm + '</text>');
     }
   });
@@ -226,11 +240,17 @@ function bx(w, h, d, m, x, y, z, ry, shadow) { var me = new THREE.Mesh(new THREE
 function cy(r, h, m, x, y, z) { var me = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), m); me.position.set(x, y + h / 2, z); return add(me); }
 function pl(w, h, m, x, y, z, rx, ry) { var me = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); me.position.set(x, y, z); me.rotation.set(rx || 0, ry || 0, 0); me.receiveShadow = true; grp.add(me); return me; }
 function lab(text, x, y, z) { var el = document.createElement('div'); el.className = 'lb'; el.textContent = text; labelBox.appendChild(el); labs.push({ el: el, p: new THREE.Vector3(x, y, z) }); }
+var ptex = {};
+function photoBox(it, p, ry) {   // 上載相貼喺前後兩面，其餘四面用相嘅平均色
+  var side = sm(new THREE.Color(isHex(it.col) ? it.col : CAT.photo.c), { roughness: 0.7 }), ms = [side, side, side, side, side, side];
+  if (it.img) { var t = ptex[it.img]; if (!t) { t = ptex[it.img] = new THREE.TextureLoader().load(it.img); t._keep = true; t.encoding = THREE.sRGBEncoding; } var face = sm(0xffffff, { map: t, roughness: 0.7 }); ms[4] = face; ms[5] = face; }
+  var me = new THREE.Mesh(new THREE.BoxGeometry(it.w, it.h, it.d), ms); me.position.set(p.x, it.z + it.h / 2, p.y); me.rotation.y = ry; return add(me);
+}
 var b3T = 0;
 function build3dSoon() { clearTimeout(b3T); b3T = setTimeout(build3d, 60); }
 function build3d() {
   if (!ok3d) return;
-  if (grp) { scene.remove(grp); grp.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && !o.material.map._keep) o.material.map.dispose(); o.material.dispose(); } }); }
+  if (grp) { scene.remove(grp); grp.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(function (m) { if (m.map && !m.map._keep) m.map.dispose(); m.dispose(); }); }); }
   labelBox.textContent = ''; labs = []; grp = new THREE.Group(); scene.add(grp);
   var R = S.room, H = R.h, b = bounds(), W = b.x1 - b.x0, D = b.y1 - b.y0, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2;
   scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--stage').trim() || '#E4E9EF');
@@ -250,7 +270,9 @@ function build3d() {
       if (it.t === 'window') { var fm = sm(0xF4F4F0); bx(it.w + 0.08, 0.05, 0.19, fm, it.x, it.z, it.y, ry, false); bx(it.w + 0.08, 0.05, 0.19, fm, it.x, it.z + it.h, it.y, ry, false); }
       lab(nm, it.x, it.z + it.h + 0.15, it.y);
     } else if (c.g === 'furn') {
-      bx(it.w, it.h, it.d, sm(col, { roughness: 0.6 }), p.x, it.z + it.h / 2, p.y, ry);
+      if (TINT[it.t] && S.style && isHex(S.style.furn)) col = new THREE.Color(S.style.furn);
+      if (it.t === 'photo') photoBox(it, p, ry);
+      else bx(it.w, it.h, it.d, sm(col, { roughness: 0.6 }), p.x, it.z + it.h / 2, p.y, ry);
       if (it.t === 'sinkc') bx(it.w * 0.45, 0.02, it.d * 0.6, sm(0x30353A, { metalness: 0.6, roughness: 0.3 }), p.x, it.z + it.h + 0.01, p.y, ry, false);
       if (it.t === 'stove') { cy(0.1, 0.02, sm(0x15171A), p.x - 0.18 * Math.cos(-ry), it.z + it.h, p.y - 0.18 * Math.sin(-ry)); cy(0.1, 0.02, sm(0x15171A), p.x + 0.18 * Math.cos(-ry), it.z + it.h, p.y + 0.18 * Math.sin(-ry)); }
       lab(nm, p.x, it.z + it.h + 0.15, p.y);
@@ -268,23 +290,64 @@ function build3d() {
       }
     }
   });
+  navCat();
   grp.add(new THREE.HemisphereLight(0xffffff, 0x8A8F96, 0.78));
   var s = new THREE.DirectionalLight(0xffffff, 0.55), ext = Math.max(W, D) * 0.8 + 2; s.position.set(cx - W * 0.3, Math.max(8, ext * 1.5), cz + D * 0.9 + 3); s.target.position.set(cx, 0, cz); s.castShadow = true; s.shadow.mapSize.set(2048, 2048); s.shadow.camera.left = -ext; s.shadow.camera.right = ext; s.shadow.camera.top = ext; s.shadow.camera.bottom = -ext; s.shadow.camera.near = 0.5; s.shadow.camera.far = ext * 6 + 20; s.shadow.bias = -0.0006; grp.add(s); grp.add(s.target);
 }
 function view(name) {
-  if (!ok3d) return; var b = bounds(), W = b.x1 - b.x0, D = b.y1 - b.y0, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, m = Math.max(W, D), k = Math.max(1, 1.3 / (camera.aspect || 1));
+  if (!ok3d) return; catFollow = false; var b = bounds(), W = b.x1 - b.x0, D = b.y1 - b.y0, cx = (b.x0 + b.x1) / 2, cz = (b.y0 + b.y1) / 2, m = Math.max(W, D), k = Math.max(1, 1.3 / (camera.aspect || 1));
   if (name === 'bird') { controls.target.set(cx, 0.8, cz); camera.position.set(cx + W * 0.06, (m * 0.62 + 1.6) * k, cz + (D / 2 + m * 0.55 + 1.2) * k); }
   else if (name === 'in') { controls.target.set(cx, 1.2, cz); camera.position.set(b.x0 + 0.5, 1.6, b.y1 - 0.5); }
   else { controls.target.set(cx, 0, cz); camera.position.set(cx, (m * 1.25 + 2) * k, cz + 0.02); }
   controls.update();
 }
 function size3d() { if (!ok3d) return; var w = wrap.clientWidth, h = wrap.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-var v3 = ok3d ? new THREE.Vector3() : null;
-function frame() {
-  requestAnimationFrame(frame); if (!ok3d) return; controls.update(); renderer.render(scene, camera);
+var v3 = ok3d ? new THREE.Vector3() : null, lastT = 0;
+function frame(now) {
+  requestAnimationFrame(frame); if (!ok3d) return;
+  var dt = Math.min(0.1, Math.max(0, ((now || 0) - lastT) / 1000)); lastT = now || 0;
+  if (cat) { cat.update(dt, camera); if (catFollow) { var b = bounds(); cat.follow(camera, controls, dt, { x0: b.x0, z0: b.y0, x1: b.x1, z1: b.y1, h: S.room.h }); } }
+  controls.update(); renderer.render(scene, camera);
   var w = wrap.clientWidth, h = wrap.clientHeight, show = $('o-lab').checked;
   for (var i = 0; i < labs.length; i++) { var l = labs[i]; v3.copy(l.p).project(camera); var vis = show && v3.z < 1 && Math.abs(v3.x) < 1.05 && Math.abs(v3.y) < 1.05; l.el.hidden = !vis; if (vis) { l.el.style.left = ((v3.x * 0.5 + 0.5) * w).toFixed(1) + 'px'; l.el.style.top = ((-v3.y * 0.5 + 0.5) * h).toFixed(1) + 'px'; } }
+  if (cat) cat.place(camera, w, h, false);
 }
+
+/* ---------- 狸花貓（assets/cat.js） ---------- */
+var cat = ok3d && window.TabbyCat ? TabbyCat.create(THREE, scene, wrap) : null, catFollow = false;
+function catStart() {   // 有門就由門口入少少開始，冇就由中間
+  for (var i = 0; i < S.items.length; i++) { var it = S.items[i]; if (it.t === 'door' && it.n) return [it.x + it.n[0] * 0.7, it.y + it.n[1] * 0.7]; }
+  var b = bounds(); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+}
+function navCat() {   // 企喺地面（離地 < 0.4 m）嘅傢俬同自己畫嘅牆當障礙；矩形外牆由範圍邊界處理
+  if (!cat) return; var b = bounds(), R = [], sg = [];
+  S.items.forEach(function (it) { var c = CAT[it.t]; if (c.g !== 'furn' || (it.z || 0) >= 0.4) return; var p = center(it); R.push([p.x, p.y, it.w / 2, it.d / 2, -it.rot * Math.PI / 180]); });
+  S.walls.forEach(function (w) { sg.push([w.x1, w.y1, w.x2, w.y2]); });
+  cat.setNav({ x0: b.x0, z0: b.y0, x1: b.x1, z1: b.y1, rects: R, segs: sg, start: catStart() });
+}
+var FLAIR = ['呢件擺得啱啱好，好推薦㗎！', '呢個位真係好難得㗎～', '收納空間充足，絕對唔使擔心！', '客人一入嚟就會即刻愛上㗎！'];
+function tourStops() {   // 好似日本地產經紀咁：開場、讀返你嘅要求、逐件傢俬介紹、最後講水電位
+  var R = S.room, b = bounds(), a = R.shell ? R.w * R.d : (b.x1 - b.x0) * (b.y1 - b.y0), p0 = catStart(), s = [], cx = p0[0], cz = p0[1];
+  s.push({ x: cx, z: cz, say: '歡迎光臨！我係今日帶睇嘅狸花貓～呢度大約 ' + a.toFixed(1) + ' m²（' + (a / PING).toFixed(1) + ' 坪），樓底 ' + R.h + ' m' + (S.style ? '，風格係「' + S.style.n + '」' : '') + '。請跟我嚟！' });
+  var br = (S.brief || '').trim().replace(/\s+/g, ' ').replace(/[。．.！!～~]+$/, '');
+  if (br) s.push({ x: cx, z: cz, say: '你話想要：「' + (br.length > 60 ? br.slice(0, 60) + '…' : br) + '」。收到！我哋一齊睇下～' });
+  var fs = S.items.filter(function (it) { return CAT[it.t].g === 'furn'; }), n = 0;
+  while (fs.length && n < 8) {   // 每次揀最近嗰件，行少啲冤枉路
+    fs.sort(function (A, B) { var p = center(A), q = center(B); return Math.hypot(p.x - cx, p.y - cz) - Math.hypot(q.x - cx, q.y - cz); });
+    var it = fs.shift(), p = center(it);
+    s.push({ x: p.x, z: p.y, say: '呢件係「' + (it.label || CAT[it.t].n) + '」，' + f2(it.w) + ' × ' + f2(it.d) + ' m' + (it.img ? '，就係你上載嗰件' : '') + (it.link ? '，購買連結已經記低咗' : '') + '。' + FLAIR[n % FLAIR.length] });
+    cx = p.x; cz = p.y; n++;
+  }
+  var u = S.items.filter(function (i) { return CAT[i.t].g === 'util'; }), cnt = {};
+  u.forEach(function (i) { var k = CAT[i.t].n; cnt[k] = (cnt[k] || 0) + 1; });
+  var ks = Object.keys(cnt), ut = u.length ? '水電位一共 ' + u.length + ' 個（' + ks.slice(0, 4).map(function (k) { return k + ' ' + cnt[k]; }).join('、') + (ks.length > 4 ? '…' : '') + '）。' : '';
+  s.push({ x: cx, z: cz, say: (fs.length ? '仲有 ' + fs.length + ' 件傢俬，你可以自己慢慢睇。' : '') + ut + '以上就係全部喇～有興趣隨時再約我睇！喵～' });
+  return s;
+}
+function pressCat(m) { document.querySelectorAll('[data-cm]').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-cm') === m ? 'true' : 'false'); }); }
+function startTour() { if (!cat) return; cat.startTour(tourStops(), function () { catFollow = false; pressCat('wander'); }); pressCat('tour'); catFollow = true; }
+document.querySelectorAll('[data-cm]').forEach(function (b) { b.addEventListener('click', function () { var m = b.getAttribute('data-cm'); if (!cat) return; if (m === 'tour') startTour(); else { cat.setMode(m); catFollow = false; pressCat(m); } }); });
+if (ok3d) gl.addEventListener('pointerdown', function () { catFollow = false; });   // 自己拖鏡頭就唔再跟貓
 
 /* ---------- 側欄 ---------- */
 function changed(light) { draw2d(); build3dSoon(); if (!light) { sched(); save(); } }
@@ -296,6 +359,10 @@ function syncInputs() {
   var R = S.room; $('r-w').value = R.w; $('r-d').value = R.d; $('r-h').value = R.h; $('r-a').value = (R.w * R.d).toFixed(1); $('r-p').value = (R.w * R.d / PING).toFixed(1); $('r-shell').checked = !!R.shell;
   ['floor', 'wall', 'ceil'].forEach(function (k) { document.querySelectorAll('#m-' + k + ' button').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-m') === S.mats[k] ? 'true' : 'false'); }); });
   $('bg-op').value = S.bg ? S.bg.op : 0.6; $('bg-show').checked = !!(S.bg && S.bg.show); $('bg-3d').checked = !!(S.bg && S.bg.show3d);
+  document.querySelectorAll('#st-pre button').forEach(function (b) { b.setAttribute('aria-pressed', S.style && S.style.id === b.getAttribute('data-st') ? 'true' : 'false'); });
+  var sc = S.style;
+  $('st-cur').innerHTML = !sc ? '未揀風格' : sc.id === 'photo' ? (sc.img ? '<img alt="風格相" src="' + esc(sc.img) + '">' : '') + (sc.pal || []).filter(isHex).map(function (c) { return '<i style="background:' + c + '"></i>'; }).join('') + '<span>已經用相嘅顏色套落地板、牆身同傢俬</span>' : '目前：' + esc(sc.n);
+  if (document.activeElement !== $('brief')) $('brief').value = S.brief || '';
   syncSel();
 }
 function num(id, min, max, def) { var v = parseFloat($(id).value); if (!isFinite(v)) return def; return Math.max(min, Math.min(max, v)); }
@@ -309,7 +376,7 @@ $('r-shell').addEventListener('change', function () { push(); S.room.shell = thi
   $('m-' + k).addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; push(); S.mats[k] = b.getAttribute('data-m'); syncInputs(); changed(); });
 });
 [['util', 'pal-util'], ['open', 'pal-open'], ['furn', 'pal-furn']].forEach(function (pr) {
-  var h = ''; for (var t in CAT) if (CAT[t].g === pr[0]) h += '<button data-add="' + t + '"><i class="' + (pr[0] === 'util' ? '' : 'sq') + '" style="background:' + CAT[t].c + '"></i>' + CAT[t].n + '</button>';
+  var h = ''; for (var t in CAT) if (CAT[t].g === pr[0] && !CAT[t].own) h += '<button data-add="' + t + '"><i class="' + (pr[0] === 'util' ? '' : 'sq') + '" style="background:' + CAT[t].c + '"></i>' + CAT[t].n + '</button>';
   $(pr[1]).innerHTML = h;
   $(pr[1]).addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; push(); var t = b.getAttribute('data-add'), bd = bounds(), it = mk(t, g5((bd.x0 + bd.x1) / 2), g5((bd.y0 + bd.y1) / 2)); if (CAT[t].wall) snapWall(it, it.x, bd.y0, true); S.items.push(it); sel = { id: it.id }; setTool('select'); syncSel(); changed(); });
 });
@@ -321,7 +388,9 @@ function syncSel() {
   var it = byId(sel.id); if (!it) { sel = null; box.hidden = true; return; }
   var c = CAT[it.t]; $('sel-title').textContent = c.n; $('sel-rot').hidden = !(c.g === 'furn' && !c.wall); $('sel-dup').hidden = false;
   var fl = [['label', '名稱', 'text'], ['x', 'X (m)'], ['y', 'Y (m)']]; if (it.w != null) fl.push(['w', '闊 (m)']); if (it.d != null) fl.push(['d', '深 (m)']); if (it.h != null) fl.push(['h', '高 (m)']); if (!c.ceil && !c.floor) fl.push(['z', '離地 (m)']);
-  f.innerHTML = fl.map(function (a) { var v = a[0] === 'label' ? esc(it.label || '') : it[a[0]]; return '<label for="sf-' + a[0] + '">' + a[1] + '</label><input id="sf-' + a[0] + '" data-f="' + a[0] + '" type="' + (a[2] || 'number') + '" step="0.05" value="' + v + '"' + (a[0] === 'label' ? ' placeholder="' + c.n + '"' : '') + '>'; }).join('');
+  var lk = it.link && safeLink(it.link);
+  f.innerHTML = (it.img ? '<img class="sel-photo" alt="傢俬相" src="' + esc(it.img) + '">' : '') + fl.map(function (a) { var v = a[0] === 'label' ? esc(it.label || '') : it[a[0]]; return '<label for="sf-' + a[0] + '">' + a[1] + '</label><input id="sf-' + a[0] + '" data-f="' + a[0] + '" type="' + (a[2] || 'number') + '" step="0.05" value="' + v + '"' + (a[0] === 'label' ? ' placeholder="' + c.n + '"' : '') + '>'; }).join('') +
+    (lk ? '<span>連結</span><a href="' + esc(lk) + '" target="_blank" rel="noopener noreferrer">' + esc(new URL(lk).hostname) + '</a>' : '');
 }
 $('sel-fields').addEventListener('change', function (e) { var k = e.target.getAttribute('data-f'), it = sel && byId(sel.id); if (!k || !it) return; push(); if (k === 'label') it.label = e.target.value.trim().slice(0, 30); else { var v = parseFloat(e.target.value); if (isFinite(v)) it[k] = (k === 'w' || k === 'd' || k === 'h') ? Math.max(0.05, Math.min(20, v)) : Math.max(-100, Math.min(100, v)); } changed(); });
 $('sel-rot').addEventListener('click', function () { var it = sel && byId(sel.id); if (!it) return; push(); it.rot = (it.rot + 90) % 360; changed(); });
@@ -352,14 +421,75 @@ $('bg-del').addEventListener('click', function () { if (!S.bg) return; push(); S
 $('calform').addEventListener('submit', function (e) { e.preventDefault(); var real = parseFloat($('cal-m').value); if (!S.bg || !cal || !cal.b || !(real > 0)) return; var meas = Math.hypot(cal.b.x - cal.a.x, cal.b.y - cal.a.y); if (meas < 1e-6) return; push(); var k = real / meas; S.bg.scale *= k; S.bg.x = cal.a.x - (cal.a.x - S.bg.x) * k; S.bg.y = cal.a.y - (cal.a.y - S.bg.y) * k; cal = null; this.hidden = true; $('cal-m').value = ''; fit(); changed(); setTool('bg'); });
 $('cal-x').addEventListener('click', function () { cal = null; $('calform').hidden = true; draw2d(); });
 
+/* ---------- 上載・生成 3D：傢俬相、風格、描述 ---------- */
+function readImg(file, cb) { if (!file || !/^image\//.test(file.type)) { cb(null); return; } var rd = new FileReader(); rd.onerror = function () { cb(null); }; rd.onload = function () { var img = new Image(); img.onerror = function () { cb(null); }; img.onload = function () { cb(img); }; img.src = rd.result; }; rd.readAsDataURL(file); }
+function fitCanvas(img, max) { var k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k)); var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height); return c; }
+function hex(r, g, b) { return '#' + [r, g, b].map(function (v) { return ('0' + Math.round(v).toString(16)).slice(-2); }).join(''); }
+function lum(h) { var n = parseInt(h.slice(1), 16); return (0.299 * (n >> 16) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255; }
+function palette(c) {   // 每個色版分 8 級分桶，揀最多嘅幾隻、而且互相唔太似嘅顏色
+  var d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, b = {}, out = [];
+  for (var i = 0; i < d.length; i += 4) { var k = (d[i] >> 5) * 64 + (d[i + 1] >> 5) * 8 + (d[i + 2] >> 5), o = b[k] || (b[k] = { n: 0, r: 0, g: 0, b: 0 }); o.n++; o.r += d[i]; o.g += d[i + 1]; o.b += d[i + 2]; }
+  Object.keys(b).map(function (k) { var o = b[k]; return { n: o.n, c: [o.r / o.n, o.g / o.n, o.b / o.n] }; }).sort(function (A, B) { return B.n - A.n; })
+    .forEach(function (e) { if (out.length < 5 && out.every(function (f) { return Math.hypot(f[0] - e.c[0], f[1] - e.c[1], f[2] - e.c[2]) > 48; })) out.push(e.c); });
+  return out.map(function (q) { return hex(q[0], q[1], q[2]); });
+}
+var fu = { img: null, col: null };
+function fuMsg(t) { $('fu-msg').textContent = t; }
+function setFu(img) {
+  if (!img) { fuMsg('呢個檔案讀唔到，請改用 PNG 或者 JPG。'); return; }
+  var c = fitCanvas(img, 384), s = fitCanvas(c, 24), d = s.getContext('2d').getImageData(0, 0, s.width, s.height).data, t = [0, 0, 0];
+  for (var i = 0; i < d.length; i += 4) { t[0] += d[i]; t[1] += d[i + 1]; t[2] += d[i + 2]; }   // 平均色：側面同頂面用
+  fu.img = c.toDataURL('image/jpeg', 0.82); fu.col = hex(t[0] * 4 / d.length, t[1] * 4 / d.length, t[2] * 4 / d.length);
+  $('fu-prev').src = fu.img; $('fu-prev').hidden = false; fuMsg('相已經揀好，入埋尺寸就可以加入。');
+}
+$('fu-img').addEventListener('change', function () { var f = this.files[0]; this.value = ''; if (f) readImg(f, setFu); });
+document.addEventListener('paste', function (e) {   // 喺任何位置 Ctrl+V 貼截圖，都當係傢俬相
+  var l = e.clipboardData && e.clipboardData.items; if (!l) return;
+  for (var i = 0; i < l.length; i++) if (l[i].kind === 'file' && /^image\//.test(l[i].type)) { e.preventDefault(); $('gen').open = true; readImg(l[i].getAsFile(), function (img) { setFu(img); $('fu-prev').scrollIntoView({ block: 'nearest' }); }); return; }
+});
+$('fu-add').addEventListener('click', function () {
+  var raw = $('fu-link').value.trim(), link = raw ? safeLink(raw) : null, name = $('fu-name').value.trim().slice(0, 30);
+  if (raw && !link) { fuMsg('連結要用 http:// 或者 https:// 開頭。'); return; }
+  if (!fu.img && !name) { fuMsg('揀一張相，或者最少入個名稱。'); return; }
+  push(); var bd = bounds(), it = mk('photo', g5((bd.x0 + bd.x1) / 2), g5((bd.y0 + bd.y1) / 2), { w: num('fu-w', 0.05, 20, 0.8), d: num('fu-d', 0.05, 20, 0.5), h: num('fu-h', 0.05, 20, 0.8) });
+  if (fu.img) { it.img = fu.img; it.col = fu.col; } if (link) it.link = link; if (name) it.label = name;
+  S.items.push(it); sel = { id: it.id }; setTool('select'); syncSel(); changed();
+  fu = { img: null, col: null }; $('fu-prev').hidden = true; $('fu-name').value = ''; $('fu-link').value = '';
+  fuMsg('已經加入「' + (name || '自訂傢俬') + '」，喺平面圖拖去想擺嘅位置。');
+});
+$('st-pre').innerHTML = STYLES.map(function (s) { return '<button data-st="' + s.id + '" aria-pressed="false"><i class="sq" style="background:' + s.furn + '"></i>' + s.n + '</button>'; }).join('');
+$('st-pre').addEventListener('click', function (e) {
+  var b = e.target.closest('button'); if (!b) return; var s = STYLES.filter(function (x) { return x.id === b.getAttribute('data-st'); })[0]; if (!s) return;
+  push(); S.mats = { floor: s.mats.floor, wall: s.mats.wall, ceil: s.mats.ceil }; S.style = { id: s.id, n: s.n, furn: s.furn }; syncInputs(); changed();
+});
+$('st-img').addEventListener('change', function () {
+  var f = this.files[0]; this.value = ''; if (!f) return;
+  readImg(f, function (img) {
+    if (!img) { $('st-cur').textContent = '呢張相讀唔到，請改用 PNG 或者 JPG。'; return; }
+    var pal = palette(fitCanvas(img, 120)); if (!pal.length) return;
+    var byL = pal.slice().sort(function (a, b) { return lum(a) - lum(b); }), wall = byL[byL.length - 1], floor = byL.length > 2 && lum(byL[0]) < 0.12 ? byL[1] : byL[0];   // 最光做牆同天花；地板揀最深（太黑就揀第二深）
+    var furn = pal.filter(function (c) { return c !== wall && c !== floor; })[0] || floor;
+    push(); S.style = { id: 'photo', n: '相片風格', img: fitCanvas(img, 128).toDataURL('image/jpeg', 0.8), pal: pal, cols: { floor: floor, wall: wall, ceil: wall }, furn: furn };
+    S.mats = { floor: 'custom', wall: 'custom', ceil: 'custom' }; syncInputs(); changed();
+  });
+});
+$('brief').addEventListener('input', function () { S.brief = this.value.slice(0, 1000); save(); });
+$('b-gen').addEventListener('click', function () {
+  build3d(); startTour();
+  if (window.matchMedia && window.matchMedia('(max-width:1000px)').matches) $('p3d').scrollIntoView({ behavior: 'smooth', block: 'start' });   // 手機版 3D 喺上面，捲去睇
+});
+
 /* ---------- 頂部按鈕 ---------- */
 function dl(name, href) { var a = document.createElement('a'); a.download = name; a.href = href; document.body.appendChild(a); a.click(); a.remove(); }
 $('b-undo').addEventListener('click', undo);
-$('b-sample').addEventListener('click', function () { push(); var bg = S.bg; S = sample(); S.bg = bg; sel = null; syncInputs(); fit(); changed(); view('bird'); });
-$('b-clear').addEventListener('click', function () { push(); var R = S.room, m = S.mats; S = blank(); S.room = R; S.mats = m; sel = null; syncInputs(); changed(); });
+$('b-sample').addEventListener('click', function () { push(); var bg = S.bg, st = S.style, br = S.brief; S = sample(); S.bg = bg; S.style = st; S.brief = br; sel = null; syncInputs(); fit(); changed(); view('bird'); });
+$('b-clear').addEventListener('click', function () { push(); var R = S.room, m = S.mats, st = S.style, br = S.brief; S = blank(); S.room = R; S.mats = m; S.style = st; S.brief = br; sel = null; syncInputs(); changed(); });
 $('b-export').addEventListener('click', function () { var u = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' })); dl('裝修規劃.json', u); setTimeout(function () { URL.revokeObjectURL(u); }, 2000); });
 $('b-import').addEventListener('click', function () { $('f-import').click(); });
-$('f-import').addEventListener('change', function () { var f = this.files[0]; this.value = ''; if (!f) return; f.text().then(function (t) { var o = JSON.parse(t); if (!o || !o.room || !Array.isArray(o.items) || !Array.isArray(o.walls)) throw 0; o.items = o.items.filter(function (i) { return CAT[i.t]; }); if (o.bg && !/^data:image\//.test(o.bg.src || '')) o.bg = null; push(); S = o; sel = null; syncInputs(); fit(); changed(); view('bird'); }).catch(function () { $('hint').textContent = '呢個檔案唔係規劃檔，開唔到。'; }); });
+$('f-import').addEventListener('change', function () { var f = this.files[0]; this.value = ''; if (!f) return; f.text().then(function (t) { var o = JSON.parse(t); if (!o || !o.room || !Array.isArray(o.items) || !Array.isArray(o.walls)) throw 0; o.items = o.items.filter(function (i) { return CAT[i.t]; }); if (o.bg && !/^data:image\//.test(o.bg.src || '')) o.bg = null;
+    o.items.forEach(function (i) { if (i.img && !/^data:image\//.test(i.img)) delete i.img; if (i.link && !safeLink(i.link)) delete i.link; if (i.col && !isHex(i.col)) delete i.col; });   // 外來檔案：相只收 data:image/、連結只收 http(s)
+    if (o.style) { var y = o.style; if (y.img && !/^data:image\//.test(y.img)) delete y.img; if (y.furn && !isHex(y.furn)) delete y.furn; y.n = String(y.n || '自訂風格').slice(0, 20); if (y.pal) y.pal = [].concat(y.pal).filter(isHex); if (y.cols) ['floor', 'wall', 'ceil'].forEach(function (k) { if (!isHex(y.cols[k])) delete y.cols[k]; }); }
+    o.brief = typeof o.brief === 'string' ? o.brief.slice(0, 1000) : ''; push(); S = o; sel = null; syncInputs(); fit(); changed(); view('bird'); }).catch(function () { $('hint').textContent = '呢個檔案唔係規劃檔，開唔到。'; }); });
 $('b-png').addEventListener('click', function () { if (!ok3d) return; renderer.render(scene, camera); dl('裝修3D.png', gl.toDataURL('image/png')); });
 $('b-fit').addEventListener('click', function () { fit(); draw2d(); });
 $('b-wend').addEventListener('click', endWall);

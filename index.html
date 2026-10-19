@@ -103,6 +103,11 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
   <div class="bar" id="bottom">
     <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
       <div id="hint">拖動旋轉・滾輪或雙指縮放・㩒下面平面圖或分區，3D 會跟住移</div>
+      <div class="grp" role="group" aria-label="貓模式">
+        <button data-cm="tour" aria-pressed="false">🐈 帶參觀</button>
+        <button data-cm="wander" aria-pressed="true">周圍行</button>
+        <button data-cm="zoom" aria-pressed="false">暴衝</button>
+      </div>
       <div class="grp" role="group" aria-label="視角">
         <button id="v-bird" data-v="bird" aria-pressed="true">鳥瞰</button>
         <button id="v-door" data-v="door" aria-pressed="false">入口</button>
@@ -132,6 +137,7 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="assets/cat.js"></script>
 <script>
 (function(){
 if(!window.THREE||!THREE.OrbitControls){document.getElementById('err').hidden=false;return;}
@@ -340,7 +346,7 @@ function syncPlan(){
     zoneMesh.scale.set(Z[n][2]-Z[n][1],W,1);zoneMesh.position.set((Z[n][1]+Z[n][2])/2,0.006,W/2);}
 }
 function fly(p,t){
-  setCatView(false);
+  setCatView(false);catFollow=false;
   if(reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}else tw={p0:camera.position.clone(),t0:controls.target.clone(),p1:p,t1:t,s:performance.now()};
   Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});
 }
@@ -397,105 +403,36 @@ function build(key){
   buildNav();
 }
 
-/* 狸花貓：擺喺 scene（唔喺 world），換風格唔會重砌，只會重算可以行嘅格。
-   地面切成 0.1 m 一格，傢俬、柱、牆邊向外加 CR 嘅位當行唔到；用 BFS 搵路，再拉直成幾段直線。 */
-var G=0.1,GX=Math.floor(L/G),GZ=Math.floor(W/G),CR=0.18,free=new Uint8Array(GX*GZ);
-var cat={x:1.2,z:2.4,h:Math.PI/2,path:[],wait:1,turn:null,ph:0,amp:0,t:0};   // h：面向角，前方 = (sin h, cos h)
-function cellOf(x,z){return Math.max(0,Math.min(GX-1,Math.floor(x/G)))+Math.max(0,Math.min(GZ-1,Math.floor(z/G)))*GX;}
-function cellX(c){return (c%GX+0.5)*G;}
-function cellZ(c){return (Math.floor(c/GX)+0.5)*G;}
+/* 狸花貓：模型、搵路同三個模式喺 assets/cat.js。隻貓擺喺 scene（唔喺 world），換風格唔會重砌，只會重算可以行嘅格。 */
+var cat=TabbyCat.create(THREE,scene,stage),catG=cat.group,catFollow=false;
 function buildNav(){
-  var R=[];   // 凳只計支柱：貓可以喺凳底行過
+  var R=[];   // [中心x,中心z,半闊,半深]；凳只計支柱，貓可以喺凳底行過
+  function rect(x0,z0,x1,z1){R.push([(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2,0]);}
   PLANS[cur].forEach(function(i){
-    if(i.k==='glass'||i.k==='screen')R.push([i.x-0.05,i.z0,i.x+0.05,i.z1]);
-    else if(i.k==='ped'||i.k==='stool'||i.k==='ext'){var s=i.k==='stool'?0.04:i.k==='ext'?0.08:i.big?0.24:0.17;R.push([i.x-s,i.z-s,i.x+s,i.z+s]);}
-    else R.push([i.x,i.z,i.x+(i.w||0.6),i.z+(i.d||0.6)]);});
-  COLS.forEach(function(c){R.push([c[0],0,c[0]+c[1],0.13],[c[0],W-0.13,c[0]+c[1],W]);});
-  for(var c=0;c<free.length;c++){
-    var x=cellX(c),z=cellZ(c),ok=x>CR&&x<L-CR&&z>CR&&z<W-CR;
-    for(var n=0;ok&&n<R.length;n++){var r=R[n];if(x>r[0]-CR&&x<r[2]+CR&&z>r[1]-CR&&z<r[3]+CR)ok=false;}
-    free[c]=ok?1:0;}
-  var c0=cellOf(cat.x,cat.z);
-  if(!free[c0]){var q=bfs(c0,true).order;for(n=0;n<q.length;n++)if(free[q[n]]){cat.x=cellX(q[n]);cat.z=cellZ(q[n]);break;}}
-  cat.path=[];cat.turn=null;cat.wait=0.6;
+    if(i.k==='glass'||i.k==='screen')rect(i.x-0.05,i.z0,i.x+0.05,i.z1);
+    else if(i.k==='ped'||i.k==='stool'||i.k==='ext'){var s=i.k==='stool'?0.04:i.k==='ext'?0.08:i.big?0.24:0.17;rect(i.x-s,i.z-s,i.x+s,i.z+s);}
+    else rect(i.x,i.z,i.x+(i.w||0.6),i.z+(i.d||0.6));});
+  COLS.forEach(function(c){rect(c[0],0,c[0]+c[1],0.13);rect(c[0],W-0.13,c[0]+c[1],W);});
+  cat.setNav({x0:0,z0:0,x1:L,z1:W,rects:R,start:[1.2,2.4]});
+  if(cat.mode()==='tour')startTour();   // 換風格就由頭帶過
 }
-function bfs(s,any){   // any：連行唔到嘅格都行，用嚟搵最近嘅空格
-  var N=GX*GZ,dist=new Int16Array(N),prev=new Int32Array(N),q=[s],h=0;
-  for(var a=0;a<N;a++)dist[a]=-1;dist[s]=0;
-  while(h<q.length){var c=q[h++],x=c%GX,z=(c-x)/GX;
-    for(var dz=-1;dz<=1;dz++)for(var dx=-1;dx<=1;dx++){
-      var nx=x+dx,nz=z+dz;if((!dx&&!dz)||nx<0||nz<0||nx>=GX||nz>=GZ)continue;
-      var n=nx+nz*GX;if(dist[n]>=0)continue;
-      if(!any&&(!free[n]||(dx&&dz&&(!free[nx+z*GX]||!free[x+nz*GX]))))continue;   // 斜行唔可以切角
-      dist[n]=dist[c]+1;prev[n]=c;q.push(n);}}
-  return {dist:dist,prev:prev,order:q};
+/* 帶參觀：好似日本地產經紀咁，逐個分區介紹 */
+var FLAIR=['採光同動線都好正，好推薦㗎！','呢個位真係好難得㗎～','收納空間充足，絕對唔使擔心！','客人一入嚟就會即刻愛上㗎！'];
+function tourStops(){
+  var a=L*W,Z=ZONES[cur],s=[{x:0.8,z:3.1,say:'歡迎光臨！我係今日帶睇嘅狸花貓～呢間 Studio 長 '+L+' m、闊 '+W+' m，大約 '+a.toFixed(1)+' m²（'+(a/3.3058).toFixed(1)+' 坪）。今日介紹嘅係「'+T.t+'」方案，請跟我嚟！'}];
+  Z.forEach(function(z,n){
+    var seen={},items=PLANS[cur].filter(function(i){if(!i.l||i.x<z[1]||i.x>=z[2]||seen[i.l])return false;seen[i.l]=1;return true;}).map(function(i){return i.l;});
+    s.push({x:(z[1]+z[2])/2,z:W/2,say:'呢度係「'+z[0]+'」'+(items.length?'，有'+items.slice(0,3).join('、')+(items.length>3?'等等':''):'')+'。'+FLAIR[n%FLAIR.length]});});
+  var lz=Z[Z.length-1];s.push({x:(lz[1]+lz[2])/2,z:W/2,say:'以上就係全部喇～有興趣隨時搵我再睇！喵～',wait:4});
+  return s;
 }
-function seeLine(ax,az,bx,bz){var d=Math.hypot(bx-ax,bz-az),k=Math.ceil(d/0.05);for(var s=1;s<=k;s++)if(!free[cellOf(ax+(bx-ax)*s/k,az+(bz-az)*s/k)])return false;return true;}
-function newTrip(){
-  var s=cellOf(cat.x,cat.z),r=bfs(s,false),far=[];
-  for(var n=0;n<r.order.length;n++)if(r.dist[r.order[n]]>=15)far.push(r.order[n]);   // 最少行 1.5 m 先值得郁
-  if(!far.length){cat.wait=2;return;}
-  var g=far[Math.floor(Math.random()*far.length)],cells=[];
-  for(var c=g;c!==s;c=r.prev[c])cells.unshift(c);
-  var pts=[],ax=cat.x,az=cat.z,k=0;
-  while(k<cells.length){var j=cells.length-1;while(j>k&&!seeLine(ax,az,cellX(cells[j]),cellZ(cells[j])))j--;
-    ax=cellX(cells[j]);az=cellZ(cells[j]);pts.push([ax,az]);k=j+1;}
-  cat.path=pts;
+function startTour(){
+  cat.startTour(tourStops(),function(){catFollow=false;pressMode('wander');});
+  if(!catView){catFollow=true;tw=null;Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});}
 }
-function angDiff(a,b){var d=(a-b)%(2*Math.PI);if(d>Math.PI)d-=2*Math.PI;if(d<-Math.PI)d+=2*Math.PI;return d;}
-
-var catG=new THREE.Group(),catHead=new THREE.Group(),catLegs=[],catTail=[];
-(function(){
-  var c=document.createElement('canvas');c.width=c.height=128;var g=c.getContext('2d');   // 虎紋貼圖：橫紋貼落身會變成一圈圈
-  g.fillStyle='#9C8466';g.fillRect(0,0,128,128);g.fillStyle='#3B2E22';
-  for(var y=6;y<128;y+=14){g.beginPath();var x;
-    for(x=0;x<=128;x+=8)g.lineTo(x,y+Math.sin(x/128*6*Math.PI+y)*2.5);
-    for(x=128;x>=0;x-=8)g.lineTo(x,y+5+Math.sin(x/128*4*Math.PI+y*1.3)*2);g.fill();}
-  var tex=new THREE.CanvasTexture(c);tex.encoding=THREE.sRGBEncoding;
-  var fur=new THREE.MeshStandardMaterial({map:tex,roughness:0.95}),base=mat(0x9C8466,{roughness:0.95}),dark=mat(0x3B2E22,{roughness:0.95}),light=mat(0xDCCBAE,{roughness:0.95});
-  function part(geo,m,x,y,z,parent){var me=new THREE.Mesh(geo,m);me.position.set(x,y,z);me.castShadow=true;(parent||catG).add(me);return me;}
-  var bodyG=new THREE.SphereGeometry(1,20,14);bodyG.rotateX(Math.PI/2);
-  part(bodyG,fur,0,0.2,0).scale.set(0.1,0.085,0.21);
-  part(new THREE.SphereGeometry(1,14,10),light,0,0.19,0.13).scale.set(0.07,0.07,0.07);   // 心口
-  catHead.position.set(0,0.25,0.22);catG.add(catHead);
-  part(new THREE.SphereGeometry(0.072,18,14),fur,0,0.03,0.02,catHead).scale.set(1,0.9,0.95);
-  part(new THREE.SphereGeometry(0.032,12,8),light,0,0.005,0.075,catHead).scale.set(1.2,0.8,0.8);   // 口鼻
-  part(new THREE.SphereGeometry(0.008,8,6),mat(0xC97B7B),0,0.02,0.1,catHead);
-  [-1,1].forEach(function(s){
-    part(new THREE.SphereGeometry(0.012,10,8),mat(0xC8D44A,{emissive:0x6A7A10,emissiveIntensity:0.4,roughness:0.2}),s*0.03,0.04,0.08,catHead);
-    part(new THREE.ConeGeometry(0.028,0.055,4),base,s*0.04,0.1,0.01,catHead).rotation.z=-s*0.3;});
-  [[0.05,0.13,0],[-0.05,0.13,Math.PI],[0.05,-0.14,Math.PI],[-0.05,-0.14,0]].forEach(function(p){   // 對角兩隻腳同步
-    var hip=new THREE.Group();hip.position.set(p[0],0.17,p[1]);hip.userData.off=p[2];catG.add(hip);
-    part(new THREE.CylinderGeometry(0.02,0.018,0.16,8),base,0,-0.08,0,hip);
-    part(new THREE.SphereGeometry(0.024,8,6),light,0,-0.155,0.01,hip).scale.set(1,0.6,1.3);
-    catLegs.push(hip);});
-  var p=new THREE.Group();p.position.set(0,0.23,-0.2);p.rotation.x=-1.0;catG.add(p);
-  for(var n=0;n<7;n++){var seg=new THREE.Group();seg.position.y=n?0.045:0;seg.rotation.x=n?0.12:0;p.add(seg);
-    part(new THREE.CylinderGeometry(0.016,0.018,0.047,8),n%2?dark:base,0,0.0225,0,seg);catTail.push(seg);p=seg;}
-})();
-scene.add(catG);
-
-function updateCat(dt){
-  var sp=0,turn=0;cat.t+=dt;
-  if(cat.path.length){
-    var p=cat.path[0],dx=p[0]-cat.x,dz=p[1]-cat.z,d=Math.hypot(dx,dz);
-    if(d<0.04){cat.path.shift();if(!cat.path.length){cat.wait=1.5+Math.random()*3.5;cat.turn=null;   // 到咗：停低，順手轉個身（個頭要轉到去空位）
-      for(var a=0;a<6&&cat.turn===null;a++){var th=cat.h+(Math.random()-0.5)*3;if(free[cellOf(cat.x+Math.sin(th)*0.3,cat.z+Math.cos(th)*0.3)])cat.turn=th;}}}
-    else{
-      turn=angDiff(Math.atan2(dx,dz),cat.h);sp=Math.abs(turn)>0.9?0:0.36*Math.cos(turn);   // 要轉大彎就先原地轉
-      var st=Math.min(sp*dt,d),nx=cat.x+Math.sin(cat.h)*st,nz=cat.z+Math.cos(cat.h)*st;
-      if(!free[cellOf(nx,nz)]){nx=cat.x+dx/d*st;nz=cat.z+dz/d*st;}
-      if(free[cellOf(nx,nz)]){cat.x=nx;cat.z=nz;}}
-  }else if(cat.wait>0){cat.wait-=dt;if(cat.turn!==null)turn=angDiff(cat.turn,cat.h);if(cat.wait<=0){cat.turn=null;newTrip();}}
-  else newTrip();
-  var tr=Math.max(-2.4*dt,Math.min(2.4*dt,turn));cat.h+=tr;
-  var moving=sp>0.02||Math.abs(tr)>0.002;
-  cat.amp+=((moving?1:0)-cat.amp)*Math.min(1,dt*6);cat.ph+=sp*dt*26+Math.abs(tr)*3;
-  catG.position.set(cat.x,Math.abs(Math.sin(cat.ph))*0.008*cat.amp,cat.z);catG.rotation.y=cat.h;
-  catLegs.forEach(function(l){l.rotation.x=Math.sin(cat.ph+l.userData.off)*0.55*cat.amp;});
-  catTail.forEach(function(s,n){s.rotation.z=Math.sin(cat.t*(moving?3:1.4)-n*0.6)*0.12;});
-  catHead.rotation.y=Math.sin(cat.t*0.7)*0.45*(1-cat.amp);   // 停低嗰陣左望右望
-}
+function pressMode(m){document.querySelectorAll('[data-cm]').forEach(function(b){b.setAttribute('aria-pressed',b.getAttribute('data-cm')===m?'true':'false');});}
+document.querySelectorAll('[data-cm]').forEach(function(b){b.addEventListener('click',function(){
+  var m=b.getAttribute('data-cm');pressMode(m);if(m==='tour')startTour();else{cat.setMode(m);catFollow=false;}});});
 
 /* 貓咪視角：鏡頭放喺貓眼，OrbitControls 暫停；退出時還返原本操作 */
 var catView=false,catSaved=null,catBtn=document.getElementById('v-cat'),hintEl=document.getElementById('hint'),hintTxt=hintEl.textContent;
@@ -504,14 +441,8 @@ function setCatView(on){
   camera.fov=on?70:45;camera.near=on?0.02:0.05;camera.updateProjectionMatrix();
   catBtn.setAttribute('aria-pressed',on?'true':'false');
   hintEl.textContent=on?'貓咪視角：鏡頭跟住狸花貓行・再㩒一次或者揀其他視角就返回':hintTxt;
-  if(on){catSaved={p:camera.position.clone(),t:controls.target.clone()};tw=null;
+  if(on){catSaved={p:camera.position.clone(),t:controls.target.clone()};tw=null;catFollow=false;
     Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});}
-}
-function catCam(){
-  var h=cat.h,lh=h+catHead.rotation.y;
-  camera.position.set(cat.x+Math.sin(h)*0.3,0.29+catG.position.y,cat.z+Math.cos(h)*0.3);
-  controls.target.set(camera.position.x+Math.sin(lh)*2,0.4,camera.position.z+Math.cos(lh)*2);
-  camera.lookAt(controls.target);
 }
 catBtn.addEventListener('click',function(){
   if(!catView){setCatView(true);return;}
@@ -527,7 +458,7 @@ var VIEWS={
 };
 var tw=null,reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function go(name,instant){
-  setCatView(false);
+  setCatView(false);catFollow=false;
   var v=VIEWS[name],t=new THREE.Vector3().fromArray(v.t),p=new THREE.Vector3().fromArray(v.p);
   if(v.fit){var k=Math.max(1,1.55/camera.aspect);p.sub(t).multiplyScalar(k).add(t);}
   if(instant||reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}
@@ -540,11 +471,12 @@ var v3=new THREE.Vector3(),last=0;
 function frame(now){
   requestAnimationFrame(frame);
   var dt=Math.min(0.1,Math.max(0,(now-last)/1000));last=now;
-  updateCat(dt);
+  cat.update(dt,camera);
   if(tw){var u=Math.min(1,(now-tw.s)/700),e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2;camera.position.lerpVectors(tw.p0,tw.p1,e);controls.target.lerpVectors(tw.t0,tw.t1,e);if(u>=1)tw=null;}
-  if(catView)catCam();else controls.update();
+  if(catView)cat.eyeCam(camera,controls);else{if(catFollow)cat.follow(camera,controls,dt,{x0:0,z0:0,x1:L,z1:W,h:H});controls.update();}
   renderer.render(scene,camera);syncPlan();
   var w=stage.clientWidth,h=stage.clientHeight;
+  cat.place(camera,w,h,catView);
   for(var n=0;n<labels.length;n++){var lb=labels[n];v3.copy(lb.p).project(camera);
     var vis=showLabels&&v3.z<1&&v3.x>-1.1&&v3.x<1.1&&v3.y>-1.1&&v3.y<1.1;
     lb.el.hidden=!vis;if(vis){lb.el.style.left=((v3.x*0.5+0.5)*w).toFixed(1)+'px';lb.el.style.top=((-v3.y*0.5+0.5)*h).toFixed(1)+'px';}}
@@ -553,7 +485,7 @@ function frame(now){
 document.querySelectorAll('[data-s]').forEach(function(b){b.addEventListener('click',function(){build(b.getAttribute('data-s'));});});
 document.querySelectorAll('[data-v]').forEach(function(b){b.addEventListener('click',function(){go(b.getAttribute('data-v'));});});
 document.getElementById('t-lab').addEventListener('click',function(){showLabels=!showLabels;this.setAttribute('aria-pressed',showLabels?'true':'false');});
-canvas.addEventListener('pointerdown',function(){tw=null;});
+canvas.addEventListener('pointerdown',function(){tw=null;catFollow=false;});   // 自己拖鏡頭就唔再跟貓
 if(window.ResizeObserver)new ResizeObserver(resize).observe(stage);else window.addEventListener('resize',resize);
 
 (function(){var b=document.getElementById('plantog'),w=document.getElementById('planwrap'),t=document.getElementById('plantog-t');
