@@ -346,7 +346,7 @@ function syncPlan(){
     zoneMesh.scale.set(Z[n][2]-Z[n][1],W,1);zoneMesh.position.set((Z[n][1]+Z[n][2])/2,0.006,W/2);}
 }
 function fly(p,t){
-  setCatView(false);catFollow=false;
+  setCatView(false);stopTour();
   if(reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}else tw={p0:camera.position.clone(),t0:controls.target.clone(),p1:p,t1:t,s:performance.now()};
   Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});
 }
@@ -404,16 +404,18 @@ function build(key){
 }
 
 /* 狸花貓：模型、搵路同三個模式喺 assets/cat.js。隻貓擺喺 scene（唔喺 world），換風格唔會重砌，只會重算可以行嘅格。 */
-var cat=TabbyCat.create(THREE,scene,stage),catG=cat.group,catFollow=false;
+var cat=TabbyCat.create(THREE,scene,stage),catG=cat.group,camHold=0,camDown=false;
 function buildNav(){
-  var R=[];   // [中心x,中心z,半闊,半深]；凳只計支柱，貓可以喺凳底行過
+  var R=[],U=[];   // R：障礙 [中心x,中心z,半闊,半深,轉角]；凳只計支柱，貓可以喺凳底行過。U：跳得上去嘅面，多一個面高
   function rect(x0,z0,x1,z1){R.push([(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2,0]);}
+  function top(x0,z0,x1,z1,h){U.push([(x0+x1)/2,(z0+z1)/2,(x1-x0)/2,(z1-z0)/2,0,h]);}
+  var TOP={table:0.77,counter:0.9,sink:0.9,bench:0.47,bar:1.05};   // 燒製枱、高溫爐熱，展台、展櫃有作品，都唔畀跳
   PLANS[cur].forEach(function(i){
     if(i.k==='glass'||i.k==='screen')rect(i.x-0.05,i.z0,i.x+0.05,i.z1);
-    else if(i.k==='ped'||i.k==='stool'||i.k==='ext'){var s=i.k==='stool'?0.04:i.k==='ext'?0.08:i.big?0.24:0.17;rect(i.x-s,i.z-s,i.x+s,i.z+s);}
-    else rect(i.x,i.z,i.x+(i.w||0.6),i.z+(i.d||0.6));});
+    else if(i.k==='ped'||i.k==='stool'||i.k==='ext'){var s=i.k==='stool'?0.04:i.k==='ext'?0.08:i.big?0.24:0.17;rect(i.x-s,i.z-s,i.x+s,i.z+s);if(i.k==='stool')top(i.x-0.12,i.z-0.12,i.x+0.12,i.z+0.12,0.47);}
+    else{rect(i.x,i.z,i.x+(i.w||0.6),i.z+(i.d||0.6));if(TOP[i.k])top(i.x,i.z,i.x+i.w,i.z+i.d,TOP[i.k]);}});
   COLS.forEach(function(c){rect(c[0],0,c[0]+c[1],0.13);rect(c[0],W-0.13,c[0]+c[1],W);});
-  cat.setNav({x0:0,z0:0,x1:L,z1:W,rects:R,start:[1.2,2.4]});
+  cat.setNav({x0:0,z0:0,x1:L,z1:W,rects:R,perches:U,start:[1.2,2.4]});
   if(cat.mode()==='tour')startTour();   // 換風格就由頭帶過
 }
 /* 帶參觀：好似日本地產經紀咁，逐個分區介紹 */
@@ -426,13 +428,16 @@ function tourStops(){
   var lz=Z[Z.length-1];s.push({x:(lz[1]+lz[2])/2,z:W/2,say:'以上就係全部喇～有興趣隨時搵我再睇！喵～',wait:4});
   return s;
 }
+/* 帶參觀期間鏡頭一直跟住隻貓（貓咪視角除外）；揀視角或者㩒平面圖就當係唔再帶，轉返周圍行 */
+function touring(){return cat.mode()==='tour';}
 function startTour(){
-  cat.startTour(tourStops(),function(){catFollow=false;pressMode('wander');});
-  if(!catView){catFollow=true;tw=null;Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});}
+  cat.startTour(tourStops(),function(){pressMode('wander');});pressMode('tour');tw=null;
+  Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});
 }
+function stopTour(){if(touring()){cat.setMode('wander');pressMode('wander');}}
 function pressMode(m){document.querySelectorAll('[data-cm]').forEach(function(b){b.setAttribute('aria-pressed',b.getAttribute('data-cm')===m?'true':'false');});}
 document.querySelectorAll('[data-cm]').forEach(function(b){b.addEventListener('click',function(){
-  var m=b.getAttribute('data-cm');pressMode(m);if(m==='tour')startTour();else{cat.setMode(m);catFollow=false;}});});
+  var m=b.getAttribute('data-cm');if(m==='tour')startTour();else{cat.setMode(m);pressMode(m);}});});
 
 /* 貓咪視角：鏡頭放喺貓眼，OrbitControls 暫停；退出時還返原本操作 */
 var catView=false,catSaved=null,catBtn=document.getElementById('v-cat'),hintEl=document.getElementById('hint'),hintTxt=hintEl.textContent;
@@ -441,12 +446,13 @@ function setCatView(on){
   camera.fov=on?70:45;camera.near=on?0.02:0.05;camera.updateProjectionMatrix();
   catBtn.setAttribute('aria-pressed',on?'true':'false');
   hintEl.textContent=on?'貓咪視角：鏡頭跟住狸花貓行・再㩒一次或者揀其他視角就返回':hintTxt;
-  if(on){catSaved={p:camera.position.clone(),t:controls.target.clone()};tw=null;catFollow=false;
+  if(on){catSaved={p:camera.position.clone(),t:controls.target.clone()};tw=null;
     Object.keys(VIEWS).forEach(function(n){document.getElementById('v-'+n).setAttribute('aria-pressed','false');});}
 }
 catBtn.addEventListener('click',function(){
   if(!catView){setCatView(true);return;}
   setCatView(false);
+  if(touring())return;   // 帶緊參觀：交返畀跟拍鏡頭
   if(reduce){camera.position.copy(catSaved.p);controls.target.copy(catSaved.t);}
   else tw={p0:camera.position.clone(),t0:controls.target.clone(),p1:catSaved.p,t1:catSaved.t,s:performance.now()};
 });
@@ -458,7 +464,7 @@ var VIEWS={
 };
 var tw=null,reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function go(name,instant){
-  setCatView(false);catFollow=false;
+  setCatView(false);stopTour();
   var v=VIEWS[name],t=new THREE.Vector3().fromArray(v.t),p=new THREE.Vector3().fromArray(v.p);
   if(v.fit){var k=Math.max(1,1.55/camera.aspect);p.sub(t).multiplyScalar(k).add(t);}
   if(instant||reduce){camera.position.copy(p);controls.target.copy(t);tw=null;}
@@ -473,7 +479,7 @@ function frame(now){
   var dt=Math.min(0.1,Math.max(0,(now-last)/1000));last=now;
   cat.update(dt,camera);
   if(tw){var u=Math.min(1,(now-tw.s)/700),e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2;camera.position.lerpVectors(tw.p0,tw.p1,e);controls.target.lerpVectors(tw.t0,tw.t1,e);if(u>=1)tw=null;}
-  if(catView)cat.eyeCam(camera,controls);else{if(catFollow)cat.follow(camera,controls,dt,{x0:0,z0:0,x1:L,z1:W,h:H});controls.update();}
+  if(catView)cat.eyeCam(camera,controls);else{if(touring())cat.follow(camera,controls,dt,{x0:0,z0:0,x1:L,z1:W,h:H},camDown||now<camHold);controls.update();}
   renderer.render(scene,camera);syncPlan();
   var w=stage.clientWidth,h=stage.clientHeight;
   cat.place(camera,w,h,catView);
@@ -485,7 +491,9 @@ function frame(now){
 document.querySelectorAll('[data-s]').forEach(function(b){b.addEventListener('click',function(){build(b.getAttribute('data-s'));});});
 document.querySelectorAll('[data-v]').forEach(function(b){b.addEventListener('click',function(){go(b.getAttribute('data-v'));});});
 document.getElementById('t-lab').addEventListener('click',function(){showLabels=!showLabels;this.setAttribute('aria-pressed',showLabels?'true':'false');});
-canvas.addEventListener('pointerdown',function(){tw=null;catFollow=false;});   // 自己拖鏡頭就唔再跟貓
+canvas.addEventListener('pointerdown',function(){tw=null;camDown=true;});   // 帶參觀時自己轉鏡頭：鏡頭照跟貓移，但保留你轉嘅角度一陣
+window.addEventListener('pointerup',function(){if(camDown){camDown=false;camHold=performance.now()+2500;}});
+canvas.addEventListener('wheel',function(){camHold=performance.now()+2500;},{passive:true});
 if(window.ResizeObserver)new ResizeObserver(resize).observe(stage);else window.addEventListener('resize',resize);
 
 (function(){var b=document.getElementById('plantog'),w=document.getElementById('planwrap'),t=document.getElementById('plantog-t');
