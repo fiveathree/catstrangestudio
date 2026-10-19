@@ -20,6 +20,7 @@
 ```
 index.html            Studio 3D 模型頁（單一檔案，CSS 同 JS 都喺入面）
 assets/plan.png       原本平面圖嘅裁切圖（只有房間部分）
+assets/favicon.svg    狸花貓頭 favicon（兩個頁面共用）
 planner/index.html    裝修規劃工具
 planner/style.css
 planner/app.js
