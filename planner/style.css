@@ -71,7 +71,7 @@ th{color:var(--dim);font-weight:500}
 #plan.t-bg{cursor:move}
 #plan text{font-family:var(--sans);pointer-events:none;user-select:none}
 .hint{padding:6px 10px;font-size:12.5px;color:var(--dim);border-top:1px solid var(--line);background:var(--panel);min-height:32px}
-#glwrap{position:relative;flex:1;min-height:0;background:var(--stage)}
+#glwrap{position:relative;flex:1;min-height:0;background:var(--stage);overflow:hidden}
 #gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #labels{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 .lb{position:absolute;transform:translate(-50%,-100%);padding:1px 6px;border-radius:3px;font-size:11.5px;white-space:nowrap;background:var(--panel);color:var(--ink);border:1px solid var(--line)}
@@ -81,4 +81,5 @@ th{color:var(--dim);font-weight:500}
   .pane{height:62vh;border-right:0;border-bottom:1px solid var(--line)}
   #side{order:3;border-right:0;overflow:visible}
   #p2d{order:1}#p3d{order:2}
+  .lb{font-size:10.5px;padding:0 4px}
 }

@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&display=swap">
 <style>
 *{box-sizing:border-box}body{margin:0;font-size:14px}[hidden]{display:none!important}
-/* Layout: full-screen 3D stage; controls float over it — style tabs on top, views bottom-left, notes bottom-right. Single dark look by choice. */
+/* Layout: full-screen 3D stage; controls float over it — style tabs on top, views bottom-left, notes bottom-right. On phones (≤640px) the bars sit above/below the 3D view instead of over it. Single dark look by choice. */
 :root{
   color-scheme:dark;
   --ink:#0A0C12; --panel:rgba(14,17,26,.82); --line:#39425C; --fg:#ECEEF5; --dim:#A9B1C8;
@@ -51,6 +51,7 @@ body{background:var(--ink);color:var(--fg);font-family:var(--sans);overflow:hidd
 #plan .cone{fill:var(--focus);fill-opacity:.3}
 #plan .camdot{fill:var(--focus);stroke:#fff;stroke-width:.03}
 .lb.on{background:var(--focus);color:#06131C;border-color:var(--focus);font-weight:700;z-index:2}
+#view{position:absolute;inset:0;overflow:hidden}
 #gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .lb{position:absolute;transform:translate(-50%,-100%);padding:2px 7px;border-radius:3px;background:rgba(10,12,18,.78);color:var(--fg);font-size:12px;white-space:nowrap;border:1px solid var(--line)}
@@ -67,15 +68,32 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-weight:700}
 #note{max-width:380px;min-width:0;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(8px);display:flex;flex-direction:column;gap:6px}
 #note h2{margin:0;font-family:var(--serif);font-size:22px}
+.note-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#note-tog{display:none;flex:none;min-height:32px;padding:4px 10px;font-size:12.5px;color:var(--dim);border-color:var(--line)}
 #note p{margin:0;font-size:13.5px;line-height:1.7;color:var(--dim)}
 #note p b{color:var(--fg);font-weight:500}
 #hint{font-size:12px;color:var(--dim);text-shadow:0 1px 4px #000}
 #err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;line-height:1.8}
+/* 手機：掣同說明唔再蓋住 3D。頁面可以上下捲；風格、貓模式、視角各一行，太長就左右滑；風格說明預設收起 */
 @media (max-width:640px){
-  h1{font-size:16px;width:100%}
-  button{padding:8px 10px;font-size:13px}
-  #note{max-width:none;width:100%;padding:10px 12px}
-  #note h2{font-size:18px}
+  html,body{height:auto}
+  body{overflow-x:hidden;overflow-y:auto}
+  #stage{flex:none;display:flex;flex-direction:column}
+  #view{position:relative;inset:auto;order:2;height:50svh;min-height:280px}
+  .bar{position:static;padding-inline:12px}
+  #top{order:1;padding-block:10px 8px;flex-direction:column;align-items:stretch;gap:6px}
+  #bottom{order:3;padding-block:8px 10px;flex-direction:column;align-items:stretch;gap:8px}
+  #bottom>div{width:100%}
+  .bar .grp{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:4px;gap:2px;backdrop-filter:none}
+  .bar .grp::-webkit-scrollbar{display:none}
+  .bar .grp button{flex:none;white-space:nowrap;padding:6px 8px;font-size:12.5px}
+  h1{font-size:16px;width:100%;text-shadow:none}
+  #hint{font-size:11.5px;text-shadow:none}
+  button{padding:7px 10px;font-size:13px;min-height:36px}
+  #note{max-width:none;width:100%;padding:8px 12px;gap:4px}
+  #note h2{font-size:16px}
+  #note-tog{display:block}
+  #note:not(.open) p{display:none}
   #note p{font-size:12.5px;line-height:1.55}
   #plan .tx{display:none}
   #plan .zl{font-size:.34px}
@@ -89,8 +107,7 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
 <body>
 
 <div id="stage">
-  <canvas id="gl" aria-label="Studio 立體模型，可拖動旋轉"></canvas>
-  <div id="labels"></div>
+  <div id="view"><canvas id="gl" aria-label="Studio 立體模型，可拖動旋轉"></canvas><div id="labels"></div></div>
   <div class="bar" id="top">
     <h1>宇宙玻璃 Studio・3D</h1>
     <div class="grp" role="group" aria-label="風格">
@@ -117,7 +134,7 @@ button[aria-pressed="true"]{background:var(--pick);color:var(--pick-ink);font-we
         <button id="t-lab" aria-pressed="true">標籤</button>
       </div>
     </div>
-    <div id="note"><h2 id="n-t"></h2><p id="n-d"></p><p id="n-m"></p></div>
+    <div id="note"><div class="note-h"><h2 id="n-t"></h2><button id="note-tog" aria-expanded="false" aria-controls="note">風格說明</button></div><p id="n-d"></p><p id="n-m"></p></div>
   </div>
   <div id="err" hidden>3D 元件載入唔到。請重新整理頁面，或者換一個瀏覽器再開。</div>
 </div>
@@ -218,7 +235,7 @@ D:[
 ].concat(stools([[4.57,1.27],[5.43,1.27],[4.57,2.53],[5.43,2.53],[7.77,1.29],[7.77,1.85],[7.77,2.41]]))
 };
 
-var canvas=document.getElementById('gl'),stage=document.getElementById('stage'),labelBox=document.getElementById('labels');
+var canvas=document.getElementById('gl'),stage=document.getElementById('view'),labelBox=document.getElementById('labels');
 var renderer;
 try{renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});}
 catch(e){document.getElementById('err').hidden=false;return;}
@@ -231,7 +248,7 @@ var camera=new THREE.PerspectiveCamera(45,1,0.05,100);
 var controls=new THREE.OrbitControls(camera,canvas);
 controls.enableDamping=true;controls.dampingFactor=0.08;controls.maxPolarAngle=Math.PI/2-0.02;controls.minDistance=0.4;controls.maxDistance=40;
 
-var world=null,labels=[],T=null,showLabels=true,cur='A';
+var world=null,labels=[],T=null,showLabels=!(window.matchMedia&&window.matchMedia('(max-width:640px)').matches),cur='A';   // 手機預設唔顯示標籤，免得遮住畫面
 
 function mat(color,o){var p={color:color,roughness:0.75,metalness:0};if(o)for(var k in o)p[k]=o[k];return new THREE.MeshStandardMaterial(p);}
 function box(w,h,d,m,x,y,z,noShadow){var me=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);me.position.set(x+w/2,y+h/2,z+d/2);if(!noShadow){me.castShadow=true;me.receiveShadow=true;}world.add(me);return me;}
@@ -499,6 +516,8 @@ function frame(now){
 
 document.querySelectorAll('[data-s]').forEach(function(b){b.addEventListener('click',function(){build(b.getAttribute('data-s'));});});
 document.querySelectorAll('[data-v]').forEach(function(b){b.addEventListener('click',function(){go(b.getAttribute('data-v'));});});
+document.getElementById('t-lab').setAttribute('aria-pressed',showLabels?'true':'false');
+(function(){var n=document.getElementById('note'),b=document.getElementById('note-tog');b.addEventListener('click',function(){var o=!n.classList.contains('open');n.classList.toggle('open',o);b.setAttribute('aria-expanded',o?'true':'false');});})();
 document.getElementById('t-lab').addEventListener('click',function(){showLabels=!showLabels;this.setAttribute('aria-pressed',showLabels?'true':'false');});
 canvas.addEventListener('pointerdown',function(){tw=null;camDown=true;});   // 帶參觀時自己轉鏡頭：鏡頭照跟貓移，但保留你轉嘅角度一陣
 window.addEventListener('pointerup',function(){if(camDown){camDown=false;camHold=performance.now()+2500;}});

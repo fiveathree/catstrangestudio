@@ -504,6 +504,7 @@ document.addEventListener('keydown', function (e) { var inField = /INPUT|TEXTARE
 if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', build3d);
 
 /* ---------- 啟動 ---------- */
+if (window.matchMedia && window.matchMedia('(max-width:640px)').matches) $('o-lab').checked = false;   // 手機預設唔顯示標籤，免得遮住 3D
 S = load() || sample(); if (S.bg) lastSrc = S.bg.src;
 function relayout() { size3d(); draw2d(); }
 if (window.ResizeObserver) { new ResizeObserver(relayout).observe(wrap); new ResizeObserver(relayout).observe(svg); } else window.addEventListener('resize', relayout);

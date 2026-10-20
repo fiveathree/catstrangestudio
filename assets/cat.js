@@ -344,8 +344,9 @@ function create(THREE, scene, box) {
   }
   function place(camera, w, h, fixed) {
     if (!sayEl || sayEl.hidden) return;
-    var x = w / 2, y = 12;
+    var x = w / 2, y = 8;
     if (!fixed) { v.set(st.x, lift.position.y + 0.5, st.z).project(camera); if (v.z < 1 && Math.abs(v.x) < 1.1 && v.y < 1.05 && v.y > -1.1) { x = (v.x * 0.5 + 0.5) * w; y = (-v.y * 0.5 + 0.5) * h; } else fixed = true; }
+    if (!fixed && y - sayEl.offsetHeight - 14 < 4) { fixed = true; y = 8; }   // 上面放唔落（例如手機細畫面）：貼住畫面頂
     var m = Math.min(140, w / 2), cx = Math.max(m, Math.min(w - m, x));
     var tm = Math.max(0, sayEl.offsetWidth / 2 - 16); sayEl.style.setProperty('--tail', Math.max(-tm, Math.min(tm, x - cx)).toFixed(1) + 'px'); x = cx;   // 對話框貼邊時，個尖角照樣指住隻貓
     sayEl.classList.toggle('fixed', !!fixed); sayEl.style.left = x.toFixed(1) + 'px'; sayEl.style.top = y.toFixed(1) + 'px';
