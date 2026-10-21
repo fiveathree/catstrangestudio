@@ -38,6 +38,7 @@ planner/vendor/       three.js r128、OrbitControls、pdf.js（第三方，唔�
 - 下面嘅平面圖區：左邊 `#orig` 係原圖，右邊 `#plan` 係由 `drawPlan()` 畫嘅 SVG。兩個 SVG 用同一個 `viewBox`（單位都係米），所以位置對得上。
 - 同步邏輯喺 `syncPlan()`（3D 鏡頭 → 平面圖標記同分區）同 `planClick()`／`flyZone()`（平面圖 → 3D 鏡頭）。
 - `#plantog` 收埋／展開平面圖區，狀態存喺 `localStorage`。
+- 標題隔籬有 `#to-planner` 橙色掣（「🛠 裝修規劃・上載」）連去 `planner/`，係主頁去規劃工具同上載功能嘅唯一入口。
 - 3D 畫布同標籤包喺 `#view` 入面（JS 嘅 `stage` 變數指住 `#view`，畫面大小、標籤位、貓對話框都跟佢）。桌面版 `#view` 鋪滿 `#stage`，掣浮喺上面；手機版（≤640px）`#view` 變成 50svh 高嘅獨立一格，`#top`／`#bottom` 擺喺佢上下唔遮畫面，頁面可以上下捲。手機版每組掣一行、太長就左右滑；風格說明預設收起（`#note-tog` 撳開）；3D 標籤預設關。
 - 原圖比例：110 dpi 下 1 px = 8.6 mm，室內左上角喺 (152, 442) px。`assets/plan.png` 係用呢個比例擺位，換圖要重新計。
 - 狸花貓：用 `assets/cat.js` 嘅 `TabbyCat.create(THREE, scene, stage)`。隻貓擺喺 `scene`（唔喺 `world`），換風格唔會重砌；`build()` 最尾叫 `buildNav()`，將 `PLANS` 同柱位轉成障礙 `[中心x,中心z,半闊,半深,rotation.y]`，再將枱、凳、櫃檯、水槽、臥榻、吧台、推車、角鋼架、棒料架、展櫃頂嘅面轉成「跳得上」嘅 `perches`（多一個面高，見 `TOP`），交畀 `cat.setNav()`。燒製枱、高溫爐、展台唔畀跳。凳只計支柱，貓可以喺凳底行過。
