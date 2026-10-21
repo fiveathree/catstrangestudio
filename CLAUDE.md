@@ -49,6 +49,7 @@ planner/vendor/       three.js r128、OrbitControls、pdf.js（第三方，唔�
 ### 裝修規劃工具（`planner/`）
 
 - 左欄設定、中間 SVG 平面編輯、右邊 three.js 3D。程式庫用 `vendor/` 入面嘅本地檔案。
+- 頂部標題左邊有 `#to-home`「← 返主頁」連去 `../`（Studio 主頁）。
 - 狀態係一個物件 `S`：`room`（長、闊、高、是否用矩形外牆）、`mats`、`walls`、`items`、`bg`（底圖）。每次改動都 `changed()`，會重畫平面、重建 3D、存入 `localStorage`。
 - `CAT` 係物件目錄（水電位、門窗、電器傢俬）；`MAT` 係質感，用 canvas 即場畫貼圖。
 - 貼牆嘅物件用 `snapWall()` 吸附，會記低牆嘅法線 `n` 同角度 `rot`。
